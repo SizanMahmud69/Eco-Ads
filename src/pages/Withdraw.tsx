@@ -9,14 +9,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { DEFAULT_CONFIG } from '@/constants';
-import { Wallet, History, AlertCircle, Check } from 'lucide-react';
+import { useGameSettings } from '@/hooks/useGameSettings';
 
+import { Wallet, History, AlertCircle, Check } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, increment } from 'firebase/firestore';
 
 export default function Withdraw() {
   const { user, updateUser } = useAuth();
+  const { settings } = useGameSettings();
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [amountPoints, setAmountPoints] = useState('');
@@ -24,7 +25,7 @@ export default function Withdraw() {
   const [accountNumber, setAccountNumber] = useState('');
   const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
-  const amountBDT = amountPoints ? ((parseInt(amountPoints) || 0) / DEFAULT_CONFIG.pointsPerBDT).toFixed(2) : '0.00';
+  const amountBDT = amountPoints ? ((parseInt(amountPoints) || 0) / (settings.points_per_bdt || 1000)).toFixed(2) : '0.00';
 
   useEffect(() => {
     if (user) {
@@ -83,8 +84,8 @@ export default function Withdraw() {
     if (!user) return;
 
     const points = parseInt(amountPoints);
-    if (points < DEFAULT_CONFIG.minWithdrawalPoints) {
-      toast.error(`Minimum withdrawal is ${DEFAULT_CONFIG.minWithdrawalPoints} points`);
+    if (points < (settings.min_withdrawal || 5000)) {
+      toast.error(`Minimum withdrawal is ${settings.min_withdrawal || 5000} points`);
       return;
     }
 
@@ -108,7 +109,7 @@ export default function Withdraw() {
       });
 
       await updateUser({
-        points: user.points - points
+        points: increment(-points) as any
       });
 
       toast.success('Withdrawal request submitted!');
@@ -172,7 +173,7 @@ export default function Withdraw() {
               <Wallet className="text-primary" />
               <CardTitle>New Request</CardTitle>
             </div>
-            <CardDescription>1000 Points = 1 BDT</CardDescription>
+            <CardDescription>{settings.points_per_bdt || 1000} Points = 1 BDT</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleWithdraw} className="space-y-4">
@@ -181,7 +182,7 @@ export default function Withdraw() {
                 <Input 
                   id="points" 
                   type="number" 
-                  placeholder={`Min ${DEFAULT_CONFIG.minWithdrawalPoints}`} 
+                  placeholder={`Min ${settings.min_withdrawal || 5000}`} 
                   value={amountPoints}
                   onChange={(e) => setAmountPoints(e.target.value)}
                   required 
@@ -240,7 +241,7 @@ export default function Withdraw() {
               <div className="text-sm text-amber-800">
                 <p className="font-bold mb-1">Important Note</p>
                 <ul className="list-disc list-inside space-y-1">
-                  <li>Minimum withdrawal is 5000 points.</li>
+                  <li>Minimum withdrawal is {settings.min_withdrawal || 5000} points.</li>
                   <li>Withdrawals are processed within 24-48 hours.</li>
                   <li>Ensure your account number is correct.</li>
                 </ul>

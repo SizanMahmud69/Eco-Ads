@@ -35,7 +35,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDocs, addDoc, deleteDoc, limit, where, increment, setDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDocs, addDoc, deleteDoc, limit, where, increment, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
 
 export default function Admin() {
   const { isAdmin, logout } = useAuth();
@@ -62,8 +62,14 @@ export default function Admin() {
     points_per_bdt: 1000,
     min_withdrawal: 5000,
     daily_game_limit: 3,
+    daily_point_limit: 2000,
+    spin_cooldown: 60,
+    scratch_cooldown: 30,
     maintenance_mode: false,
-    registrations_enabled: true
+    registrations_enabled: true,
+    bkash_number: '01700000000',
+    nagad_number: '01700000000',
+    rocket_number: '01700000000'
   });
   const [loading, setLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -213,11 +219,22 @@ export default function Admin() {
       await updateDoc(userRef, {
         is_premium: true,
         planId: request.planId,
-        planName: request.planName
+        planName: request.planName,
+        multiplier: request.multiplier || 1
       });
 
       const requestRef = doc(db, 'premium_requests', request.id);
       await updateDoc(requestRef, { status: 'approved' });
+
+      // Send Notification
+      await addDoc(collection(db, 'notifications'), {
+        userId: request.userId,
+        title: 'Premium Upgrade Approved! 💎',
+        message: `Congratulations! Your ${request.planName} plan is now active. Enjoy your ${request.multiplier}x points!`,
+        type: 'success',
+        read: false,
+        created_at: serverTimestamp()
+      });
 
       toast.success('Premium request approved!');
     } catch (error) {
@@ -228,7 +245,21 @@ export default function Admin() {
   const handleRejectPremium = async (requestId: string) => {
     try {
       const requestRef = doc(db, 'premium_requests', requestId);
+      const requestSnap = await getDoc(requestRef);
       await updateDoc(requestRef, { status: 'rejected' });
+      
+      if (requestSnap.exists()) {
+        const requestData = requestSnap.data();
+        await addDoc(collection(db, 'notifications'), {
+          userId: requestData.userId,
+          title: 'Premium Request Rejected',
+          message: 'Your premium upgrade request was rejected. Please contact support if you think this is a mistake.',
+          type: 'alert',
+          read: false,
+          created_at: serverTimestamp()
+        });
+      }
+
       toast.success('Premium request rejected');
     } catch (error) {
       toast.error('Failed to reject request');
@@ -253,6 +284,16 @@ export default function Admin() {
         const rewardRef = doc(db, 'referral_rewards', reward.id);
         await updateDoc(rewardRef, { status: 'approved' });
 
+        // Notification for referrer
+        await addDoc(collection(db, 'notifications'), {
+          userId: reward.referrerId,
+          title: 'Referral Bonus Received! 🎁',
+          message: `You earned ${reward.bonusAmount} points as ${reward.referredUsername} reached 1000 points!`,
+          type: 'success',
+          read: false,
+          created_at: serverTimestamp()
+        });
+
         toast.success('Referral reward approved!');
       }
     } catch (error) {
@@ -264,7 +305,21 @@ export default function Admin() {
   const handleRejectReferral = async (rewardId: string) => {
     try {
       const rewardRef = doc(db, 'referral_rewards', rewardId);
+      const rewardSnap = await getDoc(rewardRef);
       await updateDoc(rewardRef, { status: 'rejected' });
+
+      if (rewardSnap.exists()) {
+        const rData = rewardSnap.data();
+        await addDoc(collection(db, 'notifications'), {
+          userId: rData.referrerId,
+          title: 'Referral Reward Rejected',
+          message: 'One of your referral rewards was rejected after manual verification.',
+          type: 'alert',
+          read: false,
+          created_at: serverTimestamp()
+        });
+      }
+
       toast.success('Referral reward rejected');
     } catch (error) {
       toast.error('Failed to reject referral reward');
@@ -274,7 +329,23 @@ export default function Admin() {
   const handleUpdateStatus = async (id: string, status: string) => {
     try {
       const withdrawalRef = doc(db, 'withdrawals', id);
+      const withdrawalSnap = await getDoc(withdrawalRef);
       await updateDoc(withdrawalRef, { status });
+
+      if (withdrawalSnap.exists()) {
+        const wData = withdrawalSnap.data();
+        await addDoc(collection(db, 'notifications'), {
+          userId: wData.userId,
+          title: status === 'approved' ? 'Withdrawal Approved! 💰' : 'Withdrawal Rejected',
+          message: status === 'approved' 
+            ? `Your withdrawal of ৳${wData.amountBDT} has been processed successfully.`
+            : `Your withdrawal request for ৳${wData.amountBDT} was rejected. Points have been refunded.`,
+          type: status === 'approved' ? 'success' : 'alert',
+          read: false,
+          created_at: serverTimestamp()
+        });
+      }
+
       toast.success(`Withdrawal ${status}`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `withdrawals/${id}`);
@@ -968,131 +1039,229 @@ export default function Admin() {
           )}
 
           {activeTab === 'settings' && (
-            <div className="animate-in slide-in-from-bottom-4 duration-500 space-y-8">
-              <Card className="bg-slate-800 border-slate-700 text-slate-100">
-                <CardHeader>
-                  <CardTitle>Game Points Settings</CardTitle>
-                  <CardDescription className="text-slate-400">Set points for various games and activities.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleUpdateGameSettings} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <div className="space-y-2">
-                      <Label>Spin Points (Min - Max)</Label>
-                      <div className="flex gap-2">
-                        <Input type="number" value={gameSettings.spin_points_min} onChange={e => setGameSettings({...gameSettings, spin_points_min: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
-                        <Input type="number" value={gameSettings.spin_points_max} onChange={e => setGameSettings({...gameSettings, spin_points_max: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Scratch Points (Min - Max)</Label>
-                      <div className="flex gap-2">
-                        <Input type="number" value={gameSettings.scratch_points_min} onChange={e => setGameSettings({...gameSettings, scratch_points_min: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
-                        <Input type="number" value={gameSettings.scratch_points_max} onChange={e => setGameSettings({...gameSettings, scratch_points_max: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Math Quiz (per answer)</Label>
-                      <Input type="number" value={gameSettings.math_quiz_points} onChange={e => setGameSettings({...gameSettings, math_quiz_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Word Guess (per word)</Label>
-                      <Input type="number" value={gameSettings.word_guess_points} onChange={e => setGameSettings({...gameSettings, word_guess_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Captcha (per solve)</Label>
-                      <Input type="number" value={gameSettings.captcha_points} onChange={e => setGameSettings({...gameSettings, captcha_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Color Match (per round)</Label>
-                      <Input type="number" value={gameSettings.color_match_points} onChange={e => setGameSettings({...gameSettings, color_match_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Number Memory (per level)</Label>
-                      <Input type="number" value={gameSettings.number_memory_points} onChange={e => setGameSettings({...gameSettings, number_memory_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Referral Bonus</Label>
-                      <Input type="number" value={gameSettings.referral_bonus} onChange={e => setGameSettings({...gameSettings, referral_bonus: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
-                    </div>
-                    <Button type="submit" className="md:col-span-2 lg:col-span-3 bg-emerald-600 hover:bg-emerald-700">Save Game Settings</Button>
-                  </form>
-                </CardContent>
-              </Card>
+            <div className="animate-in slide-in-from-bottom-4 duration-500">
+              <Tabs defaultValue="game_points" className="space-y-6">
+                <TabsList className="bg-slate-800 border-slate-700 p-1">
+                  <TabsTrigger value="game_points" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">Game Points</TabsTrigger>
+                  <TabsTrigger value="economy" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">Economy</TabsTrigger>
+                  <TabsTrigger value="payment" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">Payment</TabsTrigger>
+                  <TabsTrigger value="access" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white">Control Access</TabsTrigger>
+                </TabsList>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className="bg-slate-800 border-slate-700 text-slate-100">
-                  <CardHeader>
-                    <CardTitle>Economy Settings</CardTitle>
-                    <CardDescription className="text-slate-400">Control points conversion and limits.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Points per 1 BDT</Label>
-                      <div className="flex gap-2">
-                        <Input type="number" value={gameSettings.points_per_bdt} onChange={e => setGameSettings({...gameSettings, points_per_bdt: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700 text-white" />
-                        <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Minimum Withdrawal Points</Label>
-                      <div className="flex gap-2">
-                        <Input type="number" value={gameSettings.min_withdrawal} onChange={e => setGameSettings({...gameSettings, min_withdrawal: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700 text-white" />
-                        <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Daily Game Limit (Plays per day)</Label>
-                      <div className="flex gap-2">
-                        <Input type="number" value={gameSettings.daily_game_limit} onChange={e => setGameSettings({...gameSettings, daily_game_limit: parseInt(e.target.value) || 1})} className="bg-slate-900 border-slate-700 text-white" />
-                        <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                <TabsContent value="game_points">
+                  <Card className="bg-slate-800 border-slate-700 text-slate-100">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Award className="text-amber-500" size={20} />
+                        Game Points Settings
+                      </CardTitle>
+                      <CardDescription className="text-slate-400">Set points for various games and activities.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleUpdateGameSettings} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="space-y-2">
+                          <Label>Spin Points (Min - Max)</Label>
+                          <div className="flex gap-2">
+                            <Input type="number" value={gameSettings.spin_points_min} onChange={e => setGameSettings({...gameSettings, spin_points_min: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
+                            <Input type="number" value={gameSettings.spin_points_max} onChange={e => setGameSettings({...gameSettings, spin_points_max: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Scratch Points (Min - Max)</Label>
+                          <div className="flex gap-2">
+                            <Input type="number" value={gameSettings.scratch_points_min} onChange={e => setGameSettings({...gameSettings, scratch_points_min: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
+                            <Input type="number" value={gameSettings.scratch_points_max} onChange={e => setGameSettings({...gameSettings, scratch_points_max: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Math Quiz (per answer)</Label>
+                          <Input type="number" value={gameSettings.math_quiz_points} onChange={e => setGameSettings({...gameSettings, math_quiz_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Word Guess (per word)</Label>
+                          <Input type="number" value={gameSettings.word_guess_points} onChange={e => setGameSettings({...gameSettings, word_guess_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Captcha (per solve)</Label>
+                          <Input type="number" value={gameSettings.captcha_points} onChange={e => setGameSettings({...gameSettings, captcha_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Color Match (per round)</Label>
+                          <Input type="number" value={gameSettings.color_match_points} onChange={e => setGameSettings({...gameSettings, color_match_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Number Memory (per level)</Label>
+                          <Input type="number" value={gameSettings.number_memory_points} onChange={e => setGameSettings({...gameSettings, number_memory_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
+                        </div>
+                        <Button type="submit" className="md:col-span-2 lg:col-span-3 bg-emerald-600 hover:bg-emerald-700">Save Game Settings</Button>
+                      </form>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
 
-                <Card className="bg-slate-800 border-slate-700 text-slate-100">
-                  <CardHeader>
-                    <CardTitle>System Control</CardTitle>
-                    <CardDescription className="text-slate-400">Maintenance and global toggles.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700">
-                      <div>
-                        <p className="font-medium text-slate-200">Maintenance Mode</p>
-                        <p className="text-xs text-slate-500">Disable app access for all users</p>
+                <TabsContent value="economy">
+                  <Card className="bg-slate-800 border-slate-700 text-slate-100">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <TrendingUp className="text-indigo-400" size={20} />
+                        Economy & Rewards Settings
+                      </CardTitle>
+                      <CardDescription className="text-slate-400">Control points conversion, referral rewards, and limits.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Points per 1 BDT</Label>
+                          <div className="flex gap-2">
+                            <Input type="number" value={gameSettings.points_per_bdt} onChange={e => setGameSettings({...gameSettings, points_per_bdt: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700 text-white" />
+                            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Minimum Withdrawal Points</Label>
+                          <div className="flex gap-2">
+                            <Input type="number" value={gameSettings.min_withdrawal} onChange={e => setGameSettings({...gameSettings, min_withdrawal: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700 text-white" />
+                            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Daily Game Limit (Plays per day)</Label>
+                          <div className="flex gap-2">
+                            <Input type="number" value={gameSettings.daily_game_limit} onChange={e => setGameSettings({...gameSettings, daily_game_limit: parseInt(e.target.value) || 1})} className="bg-slate-900 border-slate-700 text-white" />
+                            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Daily Max Earning Limit (Points)</Label>
+                          <div className="flex gap-2">
+                            <Input type="number" value={gameSettings.daily_point_limit} onChange={e => setGameSettings({...gameSettings, daily_point_limit: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700 text-white" />
+                            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Spin Cooldown (Minutes)</Label>
+                          <div className="flex gap-2">
+                            <Input type="number" value={gameSettings.spin_cooldown} onChange={e => setGameSettings({...gameSettings, spin_cooldown: parseInt(e.target.value) || 1})} className="bg-slate-900 border-slate-700 text-white" />
+                            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Scratch Cooldown (Minutes)</Label>
+                          <div className="flex gap-2">
+                            <Input type="number" value={gameSettings.scratch_cooldown} onChange={e => setGameSettings({...gameSettings, scratch_cooldown: parseInt(e.target.value) || 1})} className="bg-slate-900 border-slate-700 text-white" />
+                            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
+                          </div>
+                        </div>
                       </div>
-                      <div 
-                        onClick={async () => {
-                          const newVal = !gameSettings.maintenance_mode;
-                          setGameSettings({...gameSettings, maintenance_mode: newVal});
-                          await setDoc(doc(db, 'settings', 'game_points'), {...gameSettings, maintenance_mode: newVal});
-                          toast.success(`Maintenance mode ${newVal ? 'Enabled' : 'Disabled'}`);
-                        }}
-                        className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${gameSettings.maintenance_mode ? 'bg-red-600' : 'bg-slate-700'}`}
-                      >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${gameSettings.maintenance_mode ? 'right-1' : 'left-1'}`} />
+                      <div className="space-y-6">
+                        <div className="space-y-2 p-4 bg-slate-900/40 rounded-2xl border border-slate-700/50">
+                          <Label className="text-slate-300 flex items-center gap-2 mb-2">
+                            <Users size={16} className="text-emerald-400" />
+                            Referral Reward (per user)
+                          </Label>
+                          <div className="flex gap-2">
+                            <Input type="number" value={gameSettings.referral_bonus} onChange={e => setGameSettings({...gameSettings, referral_bonus: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700 text-white" />
+                            <Button className="bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20" onClick={handleUpdateGameSettings}>Set Bonus</Button>
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-2 font-medium">Points given to the referrer when their referral reaches 1,000 points.</p>
+                        </div>
                       </div>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-slate-900/50 rounded-lg border border-slate-700">
-                      <div>
-                        <p className="font-medium text-slate-200">New Registrations</p>
-                        <p className="text-xs text-slate-500">Allow new users to sign up</p>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="payment">
+                  <Card className="bg-slate-800 border-slate-700 text-slate-100">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Wallet className="text-blue-400" size={20} />
+                        Payment Settings
+                      </CardTitle>
+                      <CardDescription className="text-slate-400">Set official numbers for different mobile banking methods.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div className="space-y-2 p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+                          <Label className="text-pink-500 font-bold">bKash Number</Label>
+                          <div className="flex gap-2">
+                            <Input value={gameSettings.bkash_number || ''} onChange={e => setGameSettings({...gameSettings, bkash_number: e.target.value})} className="bg-slate-900 border-slate-700 text-white font-mono" placeholder="017XXXXXXXX" />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+                          <Label className="text-orange-500 font-bold">Nagad Number</Label>
+                          <div className="flex gap-2">
+                            <Input value={gameSettings.nagad_number || ''} onChange={e => setGameSettings({...gameSettings, nagad_number: e.target.value})} className="bg-slate-900 border-slate-700 text-white font-mono" placeholder="017XXXXXXXX" />
+                          </div>
+                        </div>
+
+                        <div className="space-y-2 p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+                          <Label className="text-purple-500 font-bold">Rocket Number</Label>
+                          <div className="flex gap-2">
+                            <Input value={gameSettings.rocket_number || ''} onChange={e => setGameSettings({...gameSettings, rocket_number: e.target.value})} className="bg-slate-900 border-slate-700 text-white font-mono" placeholder="017XXXXXXXX" />
+                          </div>
+                        </div>
                       </div>
-                      <div 
-                        onClick={async () => {
-                          const newVal = !gameSettings.registrations_enabled;
-                          setGameSettings({...gameSettings, registrations_enabled: newVal});
-                          await setDoc(doc(db, 'settings', 'game_points'), {...gameSettings, registrations_enabled: newVal});
-                          toast.success(`Registrations ${newVal ? 'Enabled' : 'Disabled'}`);
-                        }}
-                        className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${gameSettings.registrations_enabled ? 'bg-indigo-600' : 'bg-slate-700'}`}
-                      >
-                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${gameSettings.registrations_enabled ? 'right-1' : 'left-1'}`} />
+                      <div className="mt-8">
+                        <Button className="w-full bg-indigo-600 hover:bg-indigo-700 py-6 font-bold text-lg rounded-2xl shadow-xl shadow-indigo-600/20" onClick={handleUpdateGameSettings}>
+                          SAVE PAYMENT NUMBERS
+                        </Button>
                       </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="access">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <Card className="bg-slate-800 border-slate-700 text-slate-100">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                          <ShieldCheck className="text-red-400" size={20} />
+                          System Control
+                        </CardTitle>
+                        <CardDescription className="text-slate-400">Maintenance and global toggles.</CardDescription>
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700 transition-all hover:border-slate-600">
+                          <div>
+                            <p className="font-bold text-slate-200">Maintenance Mode</p>
+                            <p className="text-xs text-slate-500">Disable app access for all users</p>
+                          </div>
+                          <div 
+                            onClick={async () => {
+                              const newVal = !gameSettings.maintenance_mode;
+                              setGameSettings({...gameSettings, maintenance_mode: newVal});
+                              await setDoc(doc(db, 'settings', 'game_points'), {...gameSettings, maintenance_mode: newVal});
+                              toast.success(`Maintenance mode ${newVal ? 'Enabled' : 'Disabled'}`);
+                            }}
+                            className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${gameSettings.maintenance_mode ? 'bg-red-600' : 'bg-slate-700'}`}
+                          >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${gameSettings.maintenance_mode ? 'right-1' : 'left-1'}`} />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700 transition-all hover:border-slate-600">
+                          <div>
+                            <p className="font-bold text-slate-200">New Registrations</p>
+                            <p className="text-xs text-slate-500">Allow new users to sign up</p>
+                          </div>
+                          <div 
+                            onClick={async () => {
+                              const newVal = !gameSettings.registrations_enabled;
+                              setGameSettings({...gameSettings, registrations_enabled: newVal});
+                              await setDoc(doc(db, 'settings', 'game_points'), {...gameSettings, registrations_enabled: newVal});
+                              toast.success(`Registrations ${newVal ? 'Enabled' : 'Disabled'}`);
+                            }}
+                            className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${gameSettings.registrations_enabled ? 'bg-indigo-600' : 'bg-slate-700'}`}
+                          >
+                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${gameSettings.registrations_enabled ? 'right-1' : 'left-1'}`} />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
         </div>

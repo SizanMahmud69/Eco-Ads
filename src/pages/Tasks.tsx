@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { CheckCircle2, Clock, ExternalLink, Loader2 } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, onSnapshot, addDoc, serverTimestamp, increment } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, increment, arrayUnion, doc, updateDoc } from 'firebase/firestore';
 
 export default function Tasks() {
   const { user, updateUser } = useAuth();
@@ -14,6 +14,19 @@ export default function Tasks() {
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<string | null>(null);
   const [activeTask, setActiveTask] = useState<{ id: string; timeLeft: number } | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'tasks'), (snapshot) => {
+      // Filter tasks that are not completed yet
+      const allTasks = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const uncompletedTasks = allTasks.filter(task => !user?.completed_tasks?.includes(task.id));
+      setTasks(uncompletedTasks);
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'tasks');
+    });
+    return () => unsubscribe();
+  }, [user?.completed_tasks]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -25,16 +38,6 @@ export default function Tasks() {
     return () => clearInterval(interval);
   }, [activeTask]);
 
-  useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'tasks'), (snapshot) => {
-      setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'tasks');
-    });
-    return () => unsubscribe();
-  }, []);
-
   const startTask = (task: any) => {
     if (task.link) {
       window.open(task.link, '_blank');
@@ -45,6 +48,13 @@ export default function Tasks() {
 
   const handleCompleteTask = async (task: any) => {
     if (!user) return;
+    
+    // Safety check: already completed?
+    if (user.completed_tasks?.includes(task.id)) {
+      toast.error('You have already completed this task!');
+      return;
+    }
+
     setCompleting(task.id);
     try {
       const now = new Date().toISOString();
@@ -55,13 +65,15 @@ export default function Tasks() {
         type: 'task',
         points: task.points_reward,
         description: `Completed Task: ${task.title}`,
-        created_at: now
+        created_at: serverTimestamp()
       });
 
-      // Update user points and last task time
-      await updateUser({
-        points: increment(task.points_reward) as any,
-        last_task_at: now
+      // Update user points and completed tasks list
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        points: increment(task.points_reward),
+        last_task_at: now,
+        completed_tasks: arrayUnion(task.id)
       });
 
       toast.success(`Task completed! You earned ${task.points_reward} points.`);

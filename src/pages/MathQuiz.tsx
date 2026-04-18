@@ -7,11 +7,14 @@ import confetti from 'canvas-confetti';
 import { Calculator, Timer, CheckCircle2, XCircle, Loader2, Sparkles } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, addDoc, increment, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, increment, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
+
+import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function MathQuiz() {
   const { user, updateUser } = useAuth();
+  const { settings } = useGameSettings();
   const [problem, setProblem] = useState({ a: 0, b: 0, op: '+', answer: 0 });
   const [userAnswer, setUserAnswer] = useState('');
   const [timeLeft, setTimeLeft] = useState(15);
@@ -19,24 +22,9 @@ export default function MathQuiz() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [lastResult, setLastResult] = useState<'correct' | 'wrong' | null>(null);
-  const [rewardPoints, setRewardPoints] = useState(2);
-  const [dailyLimit, setDailyLimit] = useState(3);
 
-  useEffect(() => {
-    const fetchPoints = async () => {
-      try {
-        const settingsSnap = await getDoc(doc(db, 'settings', 'game_points'));
-        if (settingsSnap.exists()) {
-          const data = settingsSnap.data();
-          setRewardPoints(data.math_quiz_points || 2);
-          setDailyLimit(data.daily_game_limit || 3);
-        }
-      } catch (error) {
-        console.error("Error fetching points:", error);
-      }
-    };
-    fetchPoints();
-  }, []);
+  const rewardPoints = settings.math_quiz_points || 2;
+  const dailyLimit = settings.daily_game_limit || 3;
 
   const generateProblem = () => {
     const ops = ['+', '-', '*'];
@@ -86,15 +74,14 @@ export default function MathQuiz() {
     if (score > 0) {
       setLoading(true);
       try {
-        const reward = score * rewardPoints;
-        const now = new Date().toISOString();
+        const reward = score * rewardPoints * (user?.multiplier || 1);
         
         await addDoc(collection(db, 'history'), {
           userId: user?.uid,
           type: 'math_quiz',
           points: reward,
           description: `Math Quiz: ${score} correct answers`,
-          created_at: now
+          created_at: serverTimestamp()
         });
 
         await updateUser({

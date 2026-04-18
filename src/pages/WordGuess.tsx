@@ -7,8 +7,10 @@ import confetti from 'canvas-confetti';
 import { Type, RefreshCw, CheckCircle2, Loader2, Sparkles, Brain } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, addDoc, increment, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, increment, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
+
+import { useGameSettings } from '@/hooks/useGameSettings';
 
 const WORDS = [
   'PLANET', 'NATURE', 'ENERGY', 'FUTURE', 'RECYCLE', 
@@ -18,30 +20,16 @@ const WORDS = [
 
 export default function WordGuess() {
   const { user, updateUser } = useAuth();
+  const { settings } = useGameSettings();
   const [word, setWord] = useState('');
   const [scrambled, setScrambled] = useState('');
   const [userGuess, setUserGuess] = useState('');
   const [loading, setLoading] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [solved, setSolved] = useState(false);
-  const [rewardPoints, setRewardPoints] = useState(10);
-  const [dailyLimit, setDailyLimit] = useState(3);
 
-  useEffect(() => {
-    const fetchPoints = async () => {
-      try {
-        const settingsSnap = await getDoc(doc(db, 'settings', 'game_points'));
-        if (settingsSnap.exists()) {
-          const data = settingsSnap.data();
-          setRewardPoints(data.word_guess_points || 10);
-          setDailyLimit(data.daily_game_limit || 3);
-        }
-      } catch (error) {
-        console.error("Error fetching points:", error);
-      }
-    };
-    fetchPoints();
-  }, []);
+  const rewardPoints = settings.word_guess_points || 10;
+  const dailyLimit = settings.daily_game_limit || 3;
 
   const scrambleWord = (w: string) => {
     return w.split('').sort(() => Math.random() - 0.5).join('');
@@ -68,15 +56,14 @@ export default function WordGuess() {
       setSolved(true);
       setLoading(true);
       try {
-        const reward = rewardPoints;
-        const now = new Date().toISOString();
+        const reward = Math.floor(rewardPoints * (user?.multiplier || 1));
         
         await addDoc(collection(db, 'history'), {
           userId: user?.uid,
           type: 'word_guess',
           points: reward,
           description: `Word Guess: Correctly guessed "${word}"`,
-          created_at: now
+          created_at: serverTimestamp()
         });
 
         await updateUser({

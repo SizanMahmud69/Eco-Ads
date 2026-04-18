@@ -6,8 +6,10 @@ import confetti from 'canvas-confetti';
 import { Palette, Timer, CheckCircle2, XCircle, Loader2, Sparkles } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { db } from '@/lib/firebase';
-import { collection, addDoc, increment, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, increment, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
+
+import { useGameSettings } from '@/hooks/useGameSettings';
 
 const COLORS = [
   { name: 'RED', value: '#ef4444' },
@@ -20,30 +22,16 @@ const COLORS = [
 
 export default function ColorMatch() {
   const { user, updateUser } = useAuth();
+  const { settings } = useGameSettings();
   const [target, setTarget] = useState({ text: '', color: '' });
   const [options, setOptions] = useState<string[]>([]);
   const [timeLeft, setTimeLeft] = useState(10);
   const [score, setScore] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [rewardPoints, setRewardPoints] = useState(5);
-  const [dailyLimit, setDailyLimit] = useState(3);
 
-  useEffect(() => {
-    const fetchPoints = async () => {
-      try {
-        const settingsSnap = await getDoc(doc(db, 'settings', 'game_points'));
-        if (settingsSnap.exists()) {
-          const data = settingsSnap.data();
-          setRewardPoints(data.color_match_points || 5);
-          setDailyLimit(data.daily_game_limit || 3);
-        }
-      } catch (error) {
-        console.error("Error fetching points:", error);
-      }
-    };
-    fetchPoints();
-  }, []);
+  const rewardPoints = settings.color_match_points || 5;
+  const dailyLimit = settings.daily_game_limit || 3;
 
   const generateRound = () => {
     const textIdx = Math.floor(Math.random() * COLORS.length);
@@ -83,15 +71,14 @@ export default function ColorMatch() {
     if (score > 0) {
       setLoading(true);
       try {
-        const totalReward = score * rewardPoints;
-        const now = new Date().toISOString();
+        const totalReward = Math.floor(score * rewardPoints * (user?.multiplier || 1));
         
         await addDoc(collection(db, 'history'), {
           userId: user?.uid,
           type: 'color_match',
           points: totalReward,
           description: `Color Match: ${score} correct rounds`,
-          created_at: now
+          created_at: serverTimestamp()
         });
 
         await updateUser({

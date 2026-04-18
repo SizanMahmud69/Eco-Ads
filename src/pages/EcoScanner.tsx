@@ -170,6 +170,7 @@ export default function EcoScanner() {
           type: 'Eco Scan',
           points: points,
           timestamp: new Date().toISOString(),
+          created_at: serverTimestamp(),
           details: `Scanned code: ${trimmedCode.substring(0, 15)}...`
         })
       ]);

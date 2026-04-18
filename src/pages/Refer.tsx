@@ -7,8 +7,11 @@ import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 
+import { useGameSettings } from '@/hooks/useGameSettings';
+
 export default function Refer() {
   const { user } = useAuth();
+  const { settings } = useGameSettings();
   const [referrals, setReferrals] = useState<any[]>([]);
   const referralCode = user?.referral_code || 'LOADING...';
 
@@ -38,7 +41,7 @@ export default function Refer() {
     <div className="space-y-6 animate-in fade-in duration-500">
       <header className="text-center space-y-2">
         <h1 className="text-3xl font-bold">Refer & Earn</h1>
-        <p className="text-slate-500">Invite friends and get 500 points when they reach 1000 points!</p>
+        <p className="text-slate-500">Invite friends and get {settings.referral_bonus || 500} points when they reach 1000 points!</p>
       </header>
 
       <div className="grid gap-6">
@@ -141,7 +144,7 @@ export default function Refer() {
           <div className="space-y-4">
             <Step number="1" title="Share your code" description="Send your unique referral code to your friends." />
             <Step number="2" title="They sign up" description="Your friends use your code during registration." />
-            <Step number="3" title="Earn Bonus" description="Get 500 bonus points when your friend reaches 1000 points!" />
+            <Step number="3" title="Earn Bonus" description={`Get ${settings.referral_bonus || 500} bonus points when your friend reaches 1000 points!`} />
           </div>
         </section>
       </div>

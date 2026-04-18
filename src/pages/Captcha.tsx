@@ -7,33 +7,21 @@ import confetti from 'canvas-confetti';
 import { ShieldCheck, RefreshCw, CheckCircle2, Loader2, Sparkles, Lock } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, addDoc, increment, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, increment, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { motion } from 'motion/react';
+
+import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function Captcha() {
   const { user, updateUser } = useAuth();
+  const { settings } = useGameSettings();
   const [captcha, setCaptcha] = useState('');
   const [userInput, setUserInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [solvedCount, setSolvedCount] = useState(0);
-  const [rewardPoints, setRewardPoints] = useState(5);
-  const [dailyLimit, setDailyLimit] = useState(3);
 
-  useEffect(() => {
-    const fetchPoints = async () => {
-      try {
-        const settingsSnap = await getDoc(doc(db, 'settings', 'game_points'));
-        if (settingsSnap.exists()) {
-          const data = settingsSnap.data();
-          setRewardPoints(data.captcha_points || 5);
-          setDailyLimit(data.daily_game_limit || 3);
-        }
-      } catch (error) {
-        console.error("Error fetching points:", error);
-      }
-    };
-    fetchPoints();
-  }, []);
+  const rewardPoints = settings.captcha_points || 5;
+  const dailyLimit = settings.daily_game_limit || 3;
 
   const generateCaptcha = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -54,15 +42,14 @@ export default function Captcha() {
     if (userInput.toUpperCase() === captcha) {
       setLoading(true);
       try {
-        const reward = rewardPoints;
-        const now = new Date().toISOString();
+        const reward = Math.floor(rewardPoints * (user?.multiplier || 1));
         
         await addDoc(collection(db, 'history'), {
           userId: user?.uid,
           type: 'captcha',
           points: reward,
           description: `Captcha: Solved captcha successfully`,
-          created_at: now
+          created_at: serverTimestamp()
         });
 
         await updateUser({

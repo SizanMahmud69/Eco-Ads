@@ -2,15 +2,17 @@ import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
+import React, { useEffect, useState } from 'react';
 import { 
   Disc, Eraser, ListChecks, Wallet, TrendingUp, Users, Award, Zap, 
   Calculator, Brain, ShieldCheck, Palette, Eye, ArrowUpRight, 
-  ArrowDownRight, Activity, Target, LayoutGrid, QrCode
+  ArrowDownRight, Activity, Target, LayoutGrid, QrCode, Pickaxe, 
+  CheckCircle, ChevronRight
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ReferralPopup } from '@/components/ReferralPopup';
-import { useEffect, useState } from 'react';
-import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -18,14 +20,17 @@ import {
 } from 'recharts';
 import { format, subDays, startOfDay, isSameDay } from 'date-fns';
 
+import { useGameSettings } from '@/hooks/useGameSettings';
+
 export default function Dashboard() {
   const { user, showReferralPopup, setShowReferralPopup } = useAuth();
+  const { settings } = useGameSettings();
   const navigate = useNavigate();
   const [stats, setStats] = useState({
     totalEarnings: 0,
     totalWithdrawals: 0,
     remainingToday: 2000,
-    chartData: [] as any[]
+    chartData: [] as any[],
   });
   const [loading, setLoading] = useState(true);
 
@@ -39,7 +44,7 @@ export default function Dashboard() {
         const historyQuery = query(
           historyRef, 
           where('userId', '==', user.uid),
-          orderBy('timestamp', 'desc')
+          orderBy('created_at', 'desc')
         );
         const historySnap = await getDocs(historyQuery);
         
@@ -48,15 +53,26 @@ export default function Dashboard() {
         
         // Calculate Total Earnings (only positive points)
         historyData.forEach(item => {
-          if (item.points > 0) totalEarned += item.points;
+          const pts = item.points || 0;
+          if (pts > 0) totalEarned += pts;
         });
 
         // Calculate Today's Earnings for Remaining Points
         const today = startOfDay(new Date());
         let earnedToday = 0;
         historyData.forEach(item => {
-          const itemDate = new Date(item.timestamp);
-          if (isSameDay(itemDate, today) && item.points > 0) {
+          // Handle both timestamp and created_at, as well as Firestore serverTimestamp objects
+          const rawDate = item.timestamp || item.created_at;
+          if (!rawDate) return;
+          
+          let itemDate: Date;
+          if (rawDate.toMillis) {
+            itemDate = new Date(rawDate.toMillis());
+          } else {
+            itemDate = new Date(rawDate);
+          }
+
+          if (isSameDay(itemDate, today) && (item.points || 0) > 0) {
             earnedToday += item.points;
           }
         });
@@ -68,15 +84,22 @@ export default function Dashboard() {
         
         let totalWithdrawn = 0;
         withdrawSnap.docs.forEach(doc => {
-          totalWithdrawn += doc.data().amount || 0;
+          const data = doc.data();
+          // Support both 'amount' and 'amountPoints'
+          totalWithdrawn += data.amountPoints || data.amount || 0;
         });
 
         // Prepare Chart Data (Last 7 Days)
         const last7Days = Array.from({ length: 7 }, (_, i) => {
           const date = subDays(new Date(), 6 - i);
           const dayEarnings = historyData
-            .filter(item => isSameDay(new Date(item.timestamp), date) && item.points > 0)
-            .reduce((sum, item) => sum + item.points, 0);
+            .filter(item => {
+              const rawDate = item.timestamp || item.created_at;
+              if (!rawDate) return false;
+              const itemDate = rawDate.toMillis ? new Date(rawDate.toMillis()) : new Date(rawDate);
+              return isSameDay(itemDate, date) && (item.points || 0) > 0;
+            })
+            .reduce((sum, item) => sum + (item.points || 0), 0);
           
           return {
             name: format(date, 'EEE'),
@@ -87,8 +110,8 @@ export default function Dashboard() {
         setStats({
           totalEarnings: totalEarned,
           totalWithdrawals: totalWithdrawn,
-          remainingToday: Math.max(0, 2000 - earnedToday),
-          chartData: last7Days
+          remainingToday: Math.max(0, (settings.daily_point_limit || 2000) - earnedToday),
+          chartData: last7Days,
         });
       } catch (error) {
         console.error("Error fetching dashboard stats:", error);
@@ -98,7 +121,7 @@ export default function Dashboard() {
     };
 
     fetchStats();
-  }, [user]);
+  }, [user, settings]);
 
   return (
     <div className="space-y-8 pb-12">
@@ -107,19 +130,40 @@ export default function Dashboard() {
         onClose={() => setShowReferralPopup(false)} 
       />
       
-      <header className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-black tracking-tight flex items-center gap-2 text-slate-900">
-            Hello, {user?.username}
-            {user?.is_premium && <Zap size={24} className="text-amber-500 fill-amber-500 animate-pulse" />}
-            ! 👋
-          </h1>
-          <div className="flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-full text-xs font-bold border border-emerald-100">
-            <Activity size={14} />
-            Live Updates
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-6 md:p-8 bg-white dark:bg-slate-900 rounded-[2.5rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-50 dark:border-slate-800 relative overflow-hidden group">
+        <div className="flex items-center gap-5 relative z-10">
+          <div className="w-16 md:w-20 h-16 md:h-20 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-[1.5rem] flex items-center justify-center text-white shadow-xl shadow-emerald-500/30 group-hover:rotate-3 transition-transform duration-500">
+            <span className="text-2xl md:text-3xl font-black">{user?.username?.[0]?.toUpperCase()}</span>
+          </div>
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                Hello, {user?.username}
+              </h1>
+              <span className="text-2xl md:text-3xl">👋</span>
+              {user?.is_premium && (
+                <div className="flex items-center gap-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 px-3 py-1 rounded-full text-[10px] font-black border border-amber-500/20 animate-pulse">
+                  <Zap size={12} className="fill-amber-500" />
+                  PREMIUM
+                </div>
+              )}
+            </div>
+            <p className="text-sm md:text-base text-slate-500 dark:text-slate-400 font-medium tracking-wide">
+              Your earning journey at a glance.
+            </p>
           </div>
         </div>
-        <p className="text-slate-500 font-medium">Your earning journey at a glance.</p>
+
+        <div className="flex items-center gap-4 relative z-10">
+          <div className="flex items-center gap-2.5 px-4 py-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-2xl text-[10px] font-black border border-emerald-100 dark:border-emerald-500/20 shadow-sm">
+            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+            LIVE UPDATES
+          </div>
+        </div>
+
+        {/* Decorative elements */}
+        <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 blur-[80px] rounded-full -mr-32 -mt-32 group-hover:bg-emerald-500/10 transition-colors duration-700" />
+        <div className="absolute -bottom-10 left-0 w-40 h-40 bg-indigo-500/5 blur-[60px] rounded-full -ml-20 group-hover:bg-indigo-500/10 transition-colors duration-700" />
       </header>
 
       {/* Main Stats Grid */}
@@ -227,22 +271,47 @@ export default function Dashboard() {
       {/* Quick Actions Section */}
       <section className="space-y-6">
         <div className="flex items-center justify-between">
-          <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
-            <LayoutGrid className="text-primary" size={24} />
-            Quick Options
-          </h2>
-          <Link to="/tasks" className="text-sm font-bold text-primary hover:underline">View All Tasks</Link>
+          <div className="space-y-1">
+            <h2 className="text-2xl font-black text-slate-900 flex items-center gap-2">
+              <LayoutGrid className="text-primary" size={24} />
+              Quick Options
+            </h2>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider">Start earning points now</p>
+          </div>
+          <Link to="/eco" className="group flex items-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-primary hover:text-white rounded-xl text-xs font-black transition-all">
+            VIEW ALL <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
+          </Link>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-          <ActionCard to="/eco-scanner" icon={<QrCode size={32} />} label="Eco Scanner" color="text-emerald-500" />
-          <ActionCard to="/spin" icon={<Disc size={32} />} label="Spin Wheel" color="text-blue-500" />
-          <ActionCard to="/scratch" icon={<Eraser size={32} />} label="Scratch Card" color="text-purple-500" />
-          <ActionCard to="/tasks" icon={<ListChecks size={32} />} label="Daily Tasks" color="text-green-500" />
-          <ActionCard to="/math-quiz" icon={<Calculator size={32} />} label="Math Challenge" color="text-orange-500" />
-          <ActionCard to="/word-guess" icon={<Brain size={32} />} label="Word Scramble" color="text-pink-500" />
-          <ActionCard to="/captcha" icon={<ShieldCheck size={32} />} label="Secure Captcha" color="text-cyan-500" />
-          <ActionCard to="/color-match" icon={<Palette size={32} />} label="Color Match" color="text-pink-500" />
-          <ActionCard to="/number-memory" icon={<Eye size={32} />} label="Number Memory" color="text-indigo-500" />
+        
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <ActionCard 
+            to="/eco-scanner" 
+            icon={<QrCode size={28} />} 
+            label="Eco Scanner" 
+            color="text-emerald-500" 
+            isPremium
+          />
+          <ActionCard 
+            to="/spin" 
+            icon={<Disc size={28} />} 
+            label="Spin Wheel" 
+            color="text-blue-500" 
+            completed={(user?.daily_plays?.spin || 0) >= (settings.daily_game_limit || 3)}
+          />
+          <ActionCard 
+            to="/scratch" 
+            icon={<Eraser size={28} />} 
+            label="Scratch Card" 
+            color="text-purple-500" 
+            completed={(user?.daily_plays?.scratch || 0) >= (settings.daily_game_limit || 3)}
+          />
+          <ActionCard 
+            to="/mining" 
+            icon={<Pickaxe size={28} />} 
+            label="Eco Mining" 
+            color="text-yellow-500" 
+            isPremium
+          />
         </div>
       </section>
 
@@ -302,33 +371,60 @@ const StatCard = ({ title, value, subtitle, icon, color, trend }: any) => (
   </Card>
 );
 
-const ActionCard = ({ to, icon, label, color }: any) => (
-  <Link to={to}>
-    <motion.div 
-      whileHover={{ 
-        y: -8,
-        scale: 1.02,
-      }}
-      whileTap={{ scale: 0.95 }}
-      className="bg-white p-6 rounded-[2.5rem] shadow-lg shadow-slate-200/50 border border-slate-50 flex flex-col items-center gap-4 text-center transition-all relative overflow-hidden group"
-    >
-      <div className={`w-16 h-16 rounded-2xl bg-slate-50 flex items-center justify-center transition-all group-hover:bg-white group-hover:shadow-xl group-hover:shadow-current/10 ${color}`}>
-        <motion.div
-          whileHover={{ rotate: 15, scale: 1.1 }}
-        >
-          {icon}
-        </motion.div>
-      </div>
-      <div className="space-y-1">
-        <span className="text-sm font-black text-slate-800 block">{label}</span>
-        <div className="flex items-center justify-center gap-1">
-          <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Active</span>
+const ActionCard = ({ to, icon, label, color, completed, isPremium }: any) => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  
+  const handleClick = (e: React.MouseEvent) => {
+    if (isPremium && !user?.is_premium) {
+      e.preventDefault();
+      toast.info('This is a Premium game. Please upgrade to play!', {
+        icon: '💎'
+      });
+      navigate('/upgrade');
+    }
+  };
+
+  return (
+    <Link to={to} onClick={handleClick}>
+      <motion.div 
+        whileHover={{ y: -8, scale: 1.02 }}
+        whileTap={{ scale: 0.95 }}
+        className={`p-6 rounded-[2rem] shadow-lg shadow-slate-200/50 border flex flex-col items-center gap-4 text-center transition-all relative overflow-hidden group ${
+          completed 
+            ? 'bg-slate-50 border-slate-200 opacity-80' 
+            : 'bg-white border-slate-50'
+        }`}
+      >
+        {isPremium && (
+          <div className="absolute top-3 right-3 flex items-center gap-1 bg-amber-500/10 text-amber-600 px-2 py-0.5 rounded-full text-[8px] font-black border border-amber-500/20">
+            <Zap size={8} className="fill-amber-500" />
+            PREMIUM
+          </div>
+        )}
+        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+          completed 
+            ? 'bg-slate-200 text-slate-400' 
+            : `bg-slate-50 group-hover:bg-white group-hover:shadow-xl group-hover:shadow-current/10 ${color}`
+        }`}>
+          {completed ? <CheckCircle size={28} /> : icon}
         </div>
-      </div>
-      
-      {/* Decorative background element */}
-      <div className="absolute -right-4 -bottom-4 w-16 h-16 bg-slate-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity -z-10" />
-    </motion.div>
-  </Link>
-);
+        <div className="space-y-1">
+          <span className={`text-sm font-black block ${completed ? 'text-slate-400' : 'text-slate-800'}`}>
+            {label}
+          </span>
+          <div className="flex items-center justify-center gap-1">
+            {completed ? (
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Finished</span>
+            ) : (
+              <>
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Available</span>
+              </>
+            )}
+          </div>
+        </div>
+      </motion.div>
+    </Link>
+  );
+};

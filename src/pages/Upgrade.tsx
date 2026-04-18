@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Check, Zap, Award, Loader2, X, Smartphone, CreditCard } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, doc } from 'firebase/firestore';
 import { toast } from 'sonner';
 
 export default function Upgrade() {
@@ -21,8 +21,15 @@ export default function Upgrade() {
   const [method, setMethod] = useState('bKash');
   const [transactionId, setTransactionId] = useState('');
   const [senderNumber, setSenderNumber] = useState('');
+  const [paymentSettings, setPaymentSettings] = useState<any>({});
 
   useEffect(() => {
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'game_points'), (snapshot) => {
+      if (snapshot.exists()) {
+        setPaymentSettings(snapshot.data());
+      }
+    });
+
     const unsubscribe = onSnapshot(collection(db, 'plans'), (snapshot) => {
       setPlans(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
       setLoading(false);
@@ -45,6 +52,7 @@ export default function Upgrade() {
         email: user.email,
         planId: selectedPlan.id,
         planName: selectedPlan.name,
+        multiplier: selectedPlan.multiplier || 1,
         method,
         transactionId,
         senderNumber,
@@ -142,7 +150,9 @@ export default function Upgrade() {
                     Send <span className="font-bold">৳{selectedPlan.price}</span> to our official number:
                   </p>
                   <div className="flex items-center justify-between bg-white p-3 rounded-lg border border-emerald-200">
-                    <span className="font-mono font-bold text-lg">01700000000</span>
+                    <span className="font-mono font-bold text-lg">
+                      {paymentSettings[`${method.toLowerCase()}_number`] || 'Not set'}
+                    </span>
                     <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-none">Personal</Badge>
                   </div>
                 </div>

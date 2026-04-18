@@ -67,7 +67,7 @@ export default function Mining() {
     setLoading(true);
     try {
       const duration = 4 * 60 * 60 * 1000; // 4 hours
-      const points = 20;
+      const points = Math.floor(20 * (user?.multiplier || 1));
       const start = new Date();
       const end = new Date(start.getTime() + duration);
 
@@ -163,7 +163,7 @@ export default function Mining() {
             <div className="text-center space-y-6">
               <div className="space-y-2">
                 <p className="text-slate-500 font-medium">Mining Power</p>
-                <p className="text-4xl font-black text-emerald-600">5.0 Pts/Hr</p>
+                <p className="text-4xl font-black text-emerald-600">{(5 * (user?.multiplier || 1)).toFixed(1)} Pts/Hr</p>
               </div>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
@@ -172,7 +172,7 @@ export default function Mining() {
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
                   <p className="text-slate-400">Total Reward</p>
-                  <p className="font-bold">20 Points</p>
+                  <p className="font-bold">{Math.floor(20 * (user?.multiplier || 1))} Points</p>
                 </div>
               </div>
               <Button 
@@ -216,7 +216,7 @@ export default function Mining() {
                   disabled={loading}
                   className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 text-lg font-bold animate-bounce"
                 >
-                  CLAIM 20 POINTS
+                  CLAIM {activeSession.points_to_claim} POINTS
                 </Button>
               ) : (
                 <Button disabled className="w-full h-14 bg-slate-200 text-slate-500 font-bold">

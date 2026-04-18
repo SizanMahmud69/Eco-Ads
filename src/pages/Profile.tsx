@@ -5,7 +5,8 @@ import { Link } from 'react-router-dom';
 import { 
   User, Mail, Calendar, Wallet, LogOut, Shield, Zap, 
   Copy, CheckCircle2, Award, TrendingUp, Users, Gift,
-  Star, Clock, ChevronRight, Sparkles, ArrowUpRight, QrCode
+  Star, Clock, ChevronRight, Sparkles, ArrowUpRight, QrCode,
+  Calculator, Brain, ShieldCheck, Palette, Eye
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -21,19 +22,28 @@ export default function Profile() {
   React.useEffect(() => {
     if (!user) return;
 
+    // Fetch more items to handle sorting of mixed data types (String vs Timestamp) in memory
     const q = query(
       collection(db, 'history'),
       where('userId', '==', user.uid),
-      orderBy('timestamp', 'desc'),
-      limit(10)
+      orderBy('created_at', 'desc'),
+      limit(20)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const activitiesData = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      }));
-      setRealActivities(activitiesData);
+      })) as any[];
+
+      // In-memory unified sort to handle mixed data types during transition
+      const sorted = activitiesData.sort((a, b) => {
+        const dateA = a.created_at?.toMillis ? a.created_at.toMillis() : new Date(a.created_at || a.timestamp).getTime();
+        const dateB = b.created_at?.toMillis ? b.created_at.toMillis() : new Date(b.created_at || b.timestamp).getTime();
+        return (dateB || 0) - (dateA || 0);
+      });
+
+      setRealActivities(sorted.slice(0, 4));
       setLoadingActivities(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'history');
@@ -42,13 +52,6 @@ export default function Profile() {
 
     return () => unsubscribe();
   }, [user]);
-
-  const copyReferralCode = () => {
-    if (user?.referral_code) {
-      navigator.clipboard.writeText(user.referral_code);
-      toast.success('Referral code copied!');
-    }
-  };
 
   // Level calculation logic
   const pointsPerLevel = 1000;
@@ -75,14 +78,25 @@ export default function Profile() {
   };
 
   const getActivityIcon = (type: string) => {
-    switch (type) {
-      case 'Spin': return <Sparkles size={14} className="text-blue-500" />;
-      case 'Scratch': return <Gift size={14} className="text-purple-500" />;
-      case 'Daily Bonus': return <Star size={14} className="text-amber-500" />;
-      case 'Eco Scan': return <QrCode size={14} className="text-emerald-500" />;
-      case 'Mining': return <Zap size={14} className="text-yellow-500" />;
-      default: return <CheckCircle2 size={14} className="text-slate-500" />;
-    }
+    const t = type.toLowerCase();
+    if (t.includes('spin')) return <Sparkles size={14} className="text-blue-500" />;
+    if (t.includes('scratch')) return <Gift size={14} className="text-purple-500" />;
+    if (t.includes('bonus') || t.includes('daily')) return <Star size={14} className="text-amber-500" />;
+    if (t.includes('scan')) return <QrCode size={14} className="text-emerald-500" />;
+    if (t.includes('mining')) return <Zap size={14} className="text-yellow-500" />;
+    if (t.includes('math')) return <Calculator size={14} className="text-orange-500" />;
+    if (t.includes('word')) return <Brain size={14} className="text-pink-500" />;
+    if (t.includes('captcha')) return <ShieldCheck size={14} className="text-cyan-500" />;
+    if (t.includes('color')) return <Palette size={14} className="text-pink-500" />;
+    if (t.includes('memory')) return <Eye size={14} className="text-indigo-500" />;
+    return <CheckCircle2 size={14} className="text-slate-500" />;
+  };
+
+  const formatActivityName = (type: string) => {
+    return type
+      .split('_')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ');
   };
 
   return (
@@ -197,13 +211,6 @@ export default function Profile() {
               </Link>
             }
             color="emerald"
-            action={
-              <Link to="/withdraw">
-                <Button size="sm" variant="ghost" className="h-7 px-2 text-[10px] font-bold gap-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded-lg mt-2">
-                  WITHDRAW <ArrowUpRight size={12} />
-                </Button>
-              </Link>
-            }
           />
         </motion.div>
         <motion.div variants={itemVariants}>
@@ -226,42 +233,7 @@ export default function Profile() {
         </motion.div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Referral Section */}
-        <motion.div variants={itemVariants}>
-          <Card className="bg-gradient-to-br from-slate-900 to-slate-800 border-none text-white overflow-hidden relative h-full group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/20 blur-3xl rounded-full -mr-16 -mt-16 group-hover:bg-emerald-500/30 transition-colors" />
-            <CardContent className="p-6 space-y-6">
-              <div className="flex items-center gap-4">
-                <div className="p-3 bg-emerald-500/20 rounded-2xl">
-                  <Gift className="text-emerald-400" size={28} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-xl">Refer & Earn</h3>
-                  <p className="text-slate-400 text-sm">Get 500 points for each successful referral!</p>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 ml-1">Your Referral Code</label>
-                <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-2xl p-1.5 pl-5">
-                  <code className="text-emerald-400 font-mono font-bold text-lg tracking-[0.2em] flex-1">
-                    {user?.referral_code}
-                  </code>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="text-white hover:bg-white/10 h-10 w-10 rounded-xl"
-                    onClick={copyReferralCode}
-                  >
-                    <Copy size={20} />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-
+      <div className="grid grid-cols-1 gap-6">
         {/* Recent Activity */}
         <motion.div variants={itemVariants}>
           <Card className="bg-white dark:bg-slate-900 border-slate-100 dark:border-slate-800 h-full rounded-[2rem] overflow-hidden shadow-sm">
@@ -285,12 +257,17 @@ export default function Profile() {
                         {getActivityIcon(activity.type)}
                       </div>
                       <div className="flex flex-col">
-                        <span className="text-sm font-semibold">{activity.type}</span>
+                        <span className="text-sm font-semibold">{formatActivityName(activity.type)}</span>
                         <span className="text-[10px] text-emerald-600 font-bold">+{activity.points} Points</span>
                       </div>
                     </div>
                     <span className="text-[10px] font-bold text-slate-400 uppercase">
-                      {new Date(activity.timestamp).toLocaleDateString()}
+                      {(() => {
+                        const rawDate = activity.timestamp || activity.created_at;
+                        if (!rawDate) return 'Unknown';
+                        const date = rawDate.toMillis ? new Date(rawDate.toMillis()) : new Date(rawDate);
+                        return date.toLocaleDateString();
+                      })()}
                     </span>
                   </div>
                 )) : (

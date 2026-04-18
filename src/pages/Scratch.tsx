@@ -10,32 +10,19 @@ import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, increment, doc, getDoc } from 'firebase/firestore';
 import { History as HistoryIcon } from 'lucide-react';
 
+import { useGameSettings } from '@/hooks/useGameSettings';
+
 export default function Scratch() {
   const { user, updateUser } = useAuth();
+  const { settings } = useGameSettings();
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number>(0);
   const [history, setHistory] = useState<any[]>([]);
-  const [pointsRange, setPointsRange] = useState({ min: 5, max: 50 });
-  const [dailyLimit, setDailyLimit] = useState(3);
 
-  useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const settingsSnap = await getDoc(doc(db, 'settings', 'game_points'));
-        if (settingsSnap.exists()) {
-          const data = settingsSnap.data();
-          setPointsRange({
-            min: data.scratch_points_min || 5,
-            max: data.scratch_points_max || 50
-          });
-          setDailyLimit(data.daily_game_limit || 3);
-        }
-      } catch (error) {
-        console.error("Error fetching settings:", error);
-      }
-    };
-    fetchSettings();
-  }, []);
+  const pointsRange = {
+    min: settings.scratch_points_min || 5,
+    max: settings.scratch_points_max || 50
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -63,7 +50,8 @@ export default function Scratch() {
       if (!user?.last_scratch_at) return 0;
       const lastScratch = new Date(user.last_scratch_at).getTime();
       const now = Date.now();
-      const diff = SCRATCH_COOLDOWN - (now - lastScratch);
+      const cooldownMs = (settings.scratch_cooldown || 30) * 60 * 1000;
+      const diff = cooldownMs - (now - lastScratch);
       return Math.max(0, diff);
     };
 
@@ -76,7 +64,7 @@ export default function Scratch() {
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [user?.last_scratch_at]);
+  }, [user?.last_scratch_at, settings.scratch_cooldown]);
 
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000);
@@ -85,7 +73,7 @@ export default function Scratch() {
     return `${minutes}m ${seconds}s`;
   };
 
-  const canScratch = timeLeft <= 0 && (user?.daily_plays?.scratch || 0) < dailyLimit;
+  const canScratch = timeLeft <= 0 && (user?.daily_plays?.scratch || 0) < (settings.daily_game_limit || 3);
 
   const handleScratchResult = async (points: number) => {
     if (!user) return;
@@ -128,7 +116,7 @@ export default function Scratch() {
       </header>
 
       <div className="flex justify-center">
-        <ScratchCard onComplete={handleScratchResult} disabled={!canScratch || loading} minPoints={pointsRange.min} maxPoints={pointsRange.max} />
+        <ScratchCard onComplete={handleScratchResult} disabled={!canScratch || loading} minPoints={pointsRange.min} maxPoints={pointsRange.max} multiplier={user?.multiplier || 1} />
       </div>
 
       <Card className="max-w-md mx-auto">
@@ -143,17 +131,17 @@ export default function Scratch() {
           </div>
           <div className="flex justify-between items-center py-2 border-b">
             <span className="text-slate-600">Cooldown</span>
-            <span className="font-bold">30 Minutes</span>
+            <span className="font-bold">{settings.scratch_cooldown || 30} Minutes</span>
           </div>
           <div className="flex justify-between items-center py-2 border-b">
             <span className="text-slate-600">Next Scratch</span>
             <span className={`font-bold ${canScratch ? 'text-green-500' : 'text-amber-500'}`}>
-              {canScratch ? 'Available Now' : (user?.daily_plays?.scratch || 0) >= dailyLimit ? 'Daily Limit Reached' : formatTime(timeLeft)}
+              {canScratch ? 'Available Now' : (user?.daily_plays?.scratch || 0) >= (settings.daily_game_limit || 3) ? 'Daily Limit Reached' : formatTime(timeLeft)}
             </span>
           </div>
           <div className="flex justify-between items-center py-2">
             <span className="text-slate-600">Daily Plays</span>
-            <span className="font-bold">{user?.daily_plays?.scratch || 0} / {dailyLimit}</span>
+            <span className="font-bold">{user?.daily_plays?.scratch || 0} / {settings.daily_game_limit || 3}</span>
           </div>
         </CardContent>
       </Card>
