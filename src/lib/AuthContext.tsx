@@ -14,6 +14,7 @@ interface User {
   last_scratch_at: string | null;
   last_daily_at: string | null;
   last_task_at: string | null;
+  completed_tasks?: string[];
   created_at: string;
   role?: string;
   referred_by?: string | null;
@@ -21,6 +22,7 @@ interface User {
   referral_bonus_earned?: number;
   referrals_count?: number;
   referral_milestone_rewarded?: boolean;
+  multiplier?: number;
   daily_plays?: {
     spin?: number;
     scratch?: number;
@@ -129,6 +131,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               last_scratch_at: null,
               last_daily_at: null,
               last_task_at: null,
+              completed_tasks: [],
               created_at: new Date().toISOString(),
               referral_code: firebaseUser.uid.substring(0, 8).toUpperCase(),
               referred_by: null,
@@ -211,6 +214,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         last_scratch_at: null,
         last_daily_at: null,
         last_task_at: null,
+        completed_tasks: [],
         created_at: new Date().toISOString(),
         referral_code: firebaseUser.uid.substring(0, 8).toUpperCase(),
         referred_by: referralCode || null,
