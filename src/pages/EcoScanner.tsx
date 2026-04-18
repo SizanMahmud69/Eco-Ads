@@ -1,0 +1,343 @@
+import React, { useEffect, useState, useRef } from 'react';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import { useAuth } from '@/lib/AuthContext';
+import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
+import { doc, setDoc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
+import { Camera, QrCode, History, Trophy, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+
+export default function EcoScanner() {
+  const { user, updateUser } = useAuth();
+  const [scanning, setScanning] = useState(false);
+  const [reward, setReward] = useState<number | null>(null);
+  const [isInitializing, setIsInitializing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [permissionStatus, setPermissionStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+  const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
+
+  const checkPermission = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      stream.getTracks().forEach(track => track.stop());
+      setPermissionStatus('granted');
+      return true;
+    } catch (err: any) {
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setPermissionStatus('denied');
+      }
+      return false;
+    }
+  };
+
+  const startScanner = async () => {
+    if (isProcessing) return;
+    
+    setIsInitializing(true);
+    setScanning(true);
+    
+    // Pre-check permission
+    const hasPermission = await checkPermission();
+    if (!hasPermission && permissionStatus === 'denied') {
+      setIsInitializing(false);
+      setScanning(false);
+      toast.error("Camera permission denied. Please enable it in browser settings.");
+      return;
+    }
+
+    // Wait for the DOM element to be available
+    setTimeout(async () => {
+      try {
+        const html5QrCode = new Html5Qrcode("reader");
+        html5QrCodeRef.current = html5QrCode;
+
+        const config = { 
+          fps: 10, 
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0
+        };
+
+        try {
+          await html5QrCode.start(
+            { facingMode: "environment" }, 
+            config,
+            onScanSuccess,
+            onScanFailure
+          );
+        } catch (firstErr) {
+          console.warn("Failed to start with environment camera, trying user camera", firstErr);
+          try {
+            await html5QrCode.start(
+              { facingMode: "user" }, // Try front camera as fallback
+              config,
+              onScanSuccess,
+              onScanFailure
+            );
+          } catch (secondErr) {
+            console.error("Failed to start any camera", secondErr);
+            throw secondErr; // Re-throw to be caught by the outer catch block
+          }
+        }
+        setIsInitializing(false);
+      } catch (err: any) {
+        console.error("Camera start error:", err);
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          toast.error("Camera permission denied. Please enable camera access in your browser settings.");
+        } else {
+          toast.error("Could not start camera. Please ensure permissions are granted.");
+        }
+        setScanning(false);
+        setIsInitializing(false);
+      }
+    }, 100);
+  };
+
+  const stopScanner = async () => {
+    if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+      try {
+        await html5QrCodeRef.current.stop();
+        html5QrCodeRef.current.clear();
+      } catch (err) {
+        console.error("Failed to stop scanner", err);
+      }
+    }
+    setScanning(false);
+    setIsInitializing(false);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+        html5QrCodeRef.current.stop().catch(console.error);
+      }
+    };
+  }, []);
+
+  async function onScanSuccess(decodedText: string) {
+    if (!user || isProcessing) return;
+    
+    setIsProcessing(true);
+    const trimmedCode = decodedText.trim();
+    
+    await stopScanner();
+
+    try {
+      // 1. Check daily limit (max 5 scans per day)
+      const today = new Date().toISOString().split('T')[0];
+      const historyRef = collection(db, 'history');
+      const q = query(
+        historyRef, 
+        where('userId', '==', user.uid),
+        where('type', '==', 'Eco Scan'),
+        where('timestamp', '>=', today)
+      );
+      const querySnapshot = await getDocs(q);
+      
+      if (querySnapshot.size >= 5) {
+        toast.error("Daily limit reached! You can scan max 5 codes per day.");
+        setIsProcessing(false);
+        return;
+      }
+
+      // 2. Create a more robust unique ID for the code
+      const codeId = btoa(unescape(encodeURIComponent(trimmedCode)))
+        .replace(/\//g, '_')
+        .replace(/\+/g, '-')
+        .replace(/=/g, '');
+      
+      const codeRef = doc(db, 'scanned_codes', codeId);
+      const codeSnap = await getDoc(codeRef);
+
+      if (codeSnap.exists()) {
+        toast.error("This code has already been scanned!");
+        setIsProcessing(false);
+        return;
+      }
+
+      const points = Math.floor(Math.random() * 41) + 10;
+      
+      await Promise.all([
+        setDoc(codeRef, {
+          scannedBy: user.uid,
+          scannedAt: serverTimestamp(),
+          codeContent: trimmedCode
+        }),
+        updateUser({ points: (user.points || 0) + points }),
+        addDoc(collection(db, 'history'), {
+          userId: user.uid,
+          type: 'Eco Scan',
+          points: points,
+          timestamp: new Date().toISOString(),
+          details: `Scanned code: ${trimmedCode.substring(0, 15)}...`
+        })
+      ]);
+
+      setReward(points);
+      toast.success(`Success! You earned ${points} points.`);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, 'scanned_codes');
+      toast.error("Failed to process scan.");
+    } finally {
+      setIsProcessing(false);
+    }
+  }
+
+  function onScanFailure(error: any) {
+    // Standard failure for frames without codes
+  }
+
+  return (
+    <div className="max-w-2xl mx-auto space-y-6 pb-12">
+      <header className="text-center space-y-2">
+        <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto text-emerald-600 mb-4">
+          <QrCode size={32} />
+        </div>
+        <h1 className="text-3xl font-black text-slate-900">Eco Scanner</h1>
+        <p className="text-slate-500 font-medium">Scan barcodes from bottles to earn points!</p>
+      </header>
+
+      <Card className="border-none shadow-2xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden bg-white border-b-[6px] border-emerald-500/10">
+        <CardContent className="p-8 space-y-6">
+          {!scanning && !reward && (
+            <div className="text-center space-y-6 py-8">
+              {permissionStatus === 'denied' && (
+                <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm space-y-2 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center justify-center gap-2 font-bold">
+                    <AlertCircle size={18} />
+                    <span>Camera Access Blocked</span>
+                  </div>
+                  <p className="text-xs">
+                    Please click the <b>Lock</b> icon in your browser address bar and set Camera to <b>Allow</b>, then refresh the page.
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-2 border-red-200 text-red-600 hover:bg-red-100"
+                    onClick={() => window.open(window.location.href, '_blank')}
+                  >
+                    Open in New Tab
+                  </Button>
+                </div>
+              )}
+              
+              <div className="p-6 bg-slate-50 rounded-[2rem] border border-slate-100 space-y-4">
+                <div className="flex items-center justify-center gap-3 text-emerald-600 font-bold">
+                  <Trophy size={20} />
+                  <span>Earn 10-50 Points per Scan</span>
+                </div>
+                <p className="text-sm text-slate-500 leading-relaxed">
+                  Find any cold drink bottle or product with a Barcode or QR Code. 
+                  Each unique code can only be scanned once!
+                </p>
+              </div>
+              <Button 
+                onClick={startScanner}
+                size="lg"
+                className="w-full h-16 rounded-2xl text-lg font-black gap-3 shadow-xl shadow-emerald-500/20"
+              >
+                <Camera size={24} />
+                START SCANNING
+              </Button>
+              <p className="text-[10px] text-slate-400 font-medium">
+                Camera not opening? Try opening the app in a new tab or check browser permissions.
+              </p>
+            </div>
+          )}
+
+          {scanning && (
+            <div className="space-y-4 relative">
+              <div className="relative aspect-square w-full max-w-[350px] mx-auto overflow-hidden rounded-3xl border-4 border-emerald-500/20 bg-black">
+                <div id="reader" className="w-full h-full"></div>
+                {(isInitializing || isProcessing) && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 text-white font-bold z-20">
+                    <motion.div
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                      className="mb-2"
+                    >
+                      <QrCode size={32} className="text-emerald-400" />
+                    </motion.div>
+                    <span>{isProcessing ? "Processing Scan..." : "Initializing Camera..."}</span>
+                  </div>
+                )}
+                {/* Scanner Overlay UI */}
+                <div className="absolute inset-0 border-[40px] border-black/40 pointer-events-none">
+                   <div className="w-full h-full border-2 border-emerald-500 relative">
+                      <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-emerald-400" />
+                      <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-emerald-400" />
+                      <div className="absolute bottom-0 left-0 w-4 h-4 border-b-4 border-l-4 border-emerald-400" />
+                      <div className="absolute bottom-0 right-0 w-4 h-4 border-b-4 border-r-4 border-emerald-400" />
+                      <motion.div 
+                        animate={{ top: ['0%', '100%', '0%'] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        className="absolute left-0 right-0 h-0.5 bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]"
+                      />
+                   </div>
+                </div>
+              </div>
+              <Button 
+                variant="destructive" 
+                onClick={stopScanner}
+                className="w-full h-12 rounded-xl font-bold gap-2"
+              >
+                <X size={20} />
+                Stop Scanner
+              </Button>
+            </div>
+          )}
+
+          <AnimatePresence>
+            {reward && (
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="text-center space-y-6 py-8"
+              >
+                <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center mx-auto text-white shadow-xl shadow-emerald-500/30">
+                  <CheckCircle2 size={40} />
+                </div>
+                <div className="space-y-2">
+                  <h2 className="text-4xl font-black text-slate-900">+{reward} Points!</h2>
+                  <p className="text-slate-500 font-bold">Code Scanned Successfully</p>
+                </div>
+                <Button 
+                  onClick={() => setReward(null)}
+                  className="w-full h-14 rounded-xl font-black"
+                >
+                  SCAN ANOTHER
+                </Button>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </CardContent>
+      </Card>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="border-none shadow-lg bg-white rounded-3xl border-b-[4px] border-blue-500/10">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center text-blue-500">
+              <History size={24} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase">Unique Codes Only</p>
+              <p className="text-sm font-black text-slate-700">One scan per product</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-none shadow-lg bg-white rounded-3xl border-b-[4px] border-amber-500/10">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-amber-500">
+              <AlertCircle size={24} />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-400 uppercase">Fair Play</p>
+              <p className="text-sm font-black text-slate-700">Abuse leads to ban</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
