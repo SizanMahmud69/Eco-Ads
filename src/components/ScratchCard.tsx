@@ -7,12 +7,13 @@ interface ScratchCardProps {
   disabled?: boolean;
   minPoints?: number;
   maxPoints?: number;
+  multiplier?: number;
 }
 
-export const ScratchCard: React.FC<ScratchCardProps> = ({ onComplete, disabled, minPoints = 5, maxPoints = 50 }) => {
+export const ScratchCard: React.FC<ScratchCardProps> = ({ onComplete, disabled, minPoints = 5, maxPoints = 50, multiplier = 1 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [isScratched, setIsScratched] = useState(false);
-  const [points] = useState(() => Math.floor(Math.random() * (maxPoints - minPoints + 1)) + minPoints);
+  const [points] = useState(() => Math.floor((Math.floor(Math.random() * (maxPoints - minPoints + 1)) + minPoints) * multiplier));
   const [isDrawing, setIsDrawing] = useState(false);
 
   useEffect(() => {
