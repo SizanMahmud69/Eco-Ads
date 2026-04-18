@@ -148,6 +148,20 @@
       },
       "required": ["referrerId", "referredId", "bonusAmount", "status", "created_at"]
     },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification messages",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "success", "alert"] },
+        "read": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "type", "read", "created_at"]
+    },
     "Settings": {
       "title": "Settings",
       "description": "Global application settings and game points",
@@ -165,7 +179,12 @@
         "referral_bonus": { "type": "number" },
         "points_per_bdt": { "type": "number" },
         "min_withdrawal": { "type": "number" },
-        "daily_game_limit": { "type": "number", "description": "Max plays per game per day" }
+        "daily_game_limit": { "type": "number", "description": "Max plays per game per day" },
+        "bkash_number": { "type": "string" },
+        "nagad_number": { "type": "string" },
+        "rocket_number": { "type": "string" },
+        "maintenance_mode": { "type": "boolean" },
+        "registrations_enabled": { "type": "boolean" }
       }
     }
   },
@@ -205,6 +224,10 @@
     "/referral_rewards/{rewardId}": {
       "schema": "ReferralReward",
       "description": "Referral bonus claims"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications"
     },
     "/settings/{settingId}": {
       "schema": "Settings",
