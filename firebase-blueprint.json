@@ -1,0 +1,214 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Public user profile and balance",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "username": { "type": "string", "description": "Display name" },
+        "points": { "type": "number", "description": "Current points balance" },
+        "is_premium": { "type": "boolean", "description": "Premium status" },
+        "last_spin_at": { "type": "string", "format": "date-time", "description": "Last spin timestamp" },
+        "last_scratch_at": { "type": "string", "format": "date-time", "description": "Last scratch timestamp" },
+        "last_daily_at": { "type": "string", "format": "date-time", "description": "Last daily check-in timestamp" },
+        "last_task_at": { "type": "string", "format": "date-time", "description": "Last task completion timestamp" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Account creation timestamp" },
+        "referred_by": { "type": "string", "description": "Referral code of the person who invited this user" },
+        "referral_code": { "type": "string", "description": "Unique referral code for this user" },
+        "referral_bonus_earned": { "type": "number", "description": "Total points earned from referrals" },
+        "referrals_count": { "type": "number", "description": "Total number of users referred" },
+        "referral_milestone_rewarded": { "type": "boolean", "description": "Whether the referrer has been rewarded for this user reaching the milestone" },
+        "daily_plays": { 
+          "type": "object", 
+          "description": "Daily play counts for each game",
+          "properties": {
+            "spin": { "type": "number" },
+            "scratch": { "type": "number" },
+            "math_quiz": { "type": "number" },
+            "word_guess": { "type": "number" },
+            "captcha": { "type": "number" },
+            "color_match": { "type": "number" },
+            "number_memory": { "type": "number" }
+          }
+        },
+        "last_play_reset_at": { "type": "string", "format": "date", "description": "Last date when daily plays were reset" }
+      },
+      "required": ["uid", "username", "points"]
+    },
+    "UserPrivate": {
+      "title": "UserPrivate",
+      "description": "Sensitive user data",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" }
+      },
+      "required": ["email"]
+    },
+    "Withdrawal": {
+      "title": "Withdrawal",
+      "description": "Withdrawal request details",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the user" },
+        "username": { "type": "string", "description": "Username for admin view" },
+        "email": { "type": "string", "description": "Email for admin view" },
+        "amountPoints": { "type": "number", "description": "Points requested" },
+        "amountBDT": { "type": "number", "description": "Amount in BDT" },
+        "method": { "type": "string", "description": "Payment method (bKash, etc)" },
+        "accountNumber": { "type": "string", "description": "Target account number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"], "description": "Request status" },
+        "created_at": { "type": "string", "format": "date-time", "description": "Request timestamp" }
+      },
+      "required": ["userId", "amountPoints", "amountBDT", "method", "accountNumber", "status"]
+    },
+    "Task": {
+      "title": "Task",
+      "description": "Available earning task",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "points_reward": { "type": "number" },
+        "type": { "type": "string", "enum": ["daily", "one-time", "mining"] },
+        "link": { "type": "string", "description": "Optional link for the task" },
+        "timer": { "type": "number", "description": "Time in seconds user must wait before claiming" }
+      },
+      "required": ["title", "points_reward", "type"]
+    },
+    "Plan": {
+      "title": "Plan",
+      "description": "Subscription plan details",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "duration_days": { "type": "number" },
+        "features": { "type": "array", "items": { "type": "string" } },
+        "multiplier": { "type": "number", "description": "Points multiplier" }
+      },
+      "required": ["name", "price", "duration_days", "features"]
+    },
+    "MiningSession": {
+      "title": "MiningSession",
+      "description": "Active mining session for a user",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "start_at": { "type": "string", "format": "date-time" },
+        "end_at": { "type": "string", "format": "date-time" },
+        "points_to_claim": { "type": "number" },
+        "status": { "type": "string", "enum": ["active", "completed", "claimed"] }
+      },
+      "required": ["userId", "start_at", "end_at", "points_to_claim", "status"]
+    },
+    "History": {
+      "title": "History",
+      "description": "User activity history (spin, scratch, etc.)",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["spin", "scratch", "daily", "task"] },
+        "points": { "type": "number" },
+        "description": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "points", "created_at"]
+    },
+    "PremiumRequest": {
+      "title": "PremiumRequest",
+      "description": "Request to upgrade to premium",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "email": { "type": "string" },
+        "planId": { "type": "string" },
+        "planName": { "type": "string" },
+        "method": { "type": "string", "enum": ["bKash", "Nagad", "Rocket"] },
+        "transactionId": { "type": "string" },
+        "senderNumber": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "planId", "method", "transactionId", "senderNumber", "status", "created_at"]
+    },
+    "ReferralReward": {
+      "title": "ReferralReward",
+      "description": "Referral bonus claim",
+      "type": "object",
+      "properties": {
+        "referrerId": { "type": "string" },
+        "referredId": { "type": "string" },
+        "referredUsername": { "type": "string" },
+        "bonusAmount": { "type": "number" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["referrerId", "referredId", "bonusAmount", "status", "created_at"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global application settings and game points",
+      "type": "object",
+      "properties": {
+        "spin_points_min": { "type": "number" },
+        "spin_points_max": { "type": "number" },
+        "scratch_points_min": { "type": "number" },
+        "scratch_points_max": { "type": "number" },
+        "math_quiz_points": { "type": "number" },
+        "word_guess_points": { "type": "number" },
+        "captcha_points": { "type": "number" },
+        "color_match_points": { "type": "number" },
+        "number_memory_points": { "type": "number" },
+        "referral_bonus": { "type": "number" },
+        "points_per_bdt": { "type": "number" },
+        "min_withdrawal": { "type": "number" },
+        "daily_game_limit": { "type": "number", "description": "Max plays per game per day" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents"
+    },
+    "/users_private/{userId}": {
+      "schema": "UserPrivate",
+      "description": "Private user data (PII)"
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": "Withdrawal",
+      "description": "Global withdrawal requests"
+    },
+    "/tasks/{taskId}": {
+      "schema": "Task",
+      "description": "Available tasks"
+    },
+    "/plans/{planId}": {
+      "schema": "Plan",
+      "description": "Subscription plans"
+    },
+    "/mining_sessions/{sessionId}": {
+      "schema": "MiningSession",
+      "description": "User mining sessions"
+    },
+    "/history/{historyId}": {
+      "schema": "History",
+      "description": "User activity history records"
+    },
+    "/premium_requests/{requestId}": {
+      "schema": "PremiumRequest",
+      "description": "Premium upgrade requests"
+    },
+    "/referral_rewards/{rewardId}": {
+      "schema": "ReferralReward",
+      "description": "Referral bonus claims"
+    },
+    "/settings/{settingId}": {
+      "schema": "Settings",
+      "description": "Global app settings"
+    }
+  }
+}
