@@ -20,6 +20,15 @@ export interface GameSettings {
   spin_cooldown: number;
   scratch_cooldown: number;
   maintenance_mode: boolean;
+  // Ad Codes
+  ad_popunder?: string;
+  ad_social_bar?: string;
+  ad_banner_728x90?: string;
+  ad_banner_468x60?: string;
+  ad_banner_320x50?: string;
+  ad_square_300x250?: string;
+  ad_native_top?: string;
+  ad_native_bottom?: string;
   registrations_enabled: boolean;
   bkash_number: string;
   nagad_number: string;
@@ -44,6 +53,14 @@ const defaultSettings: GameSettings = {
   spin_cooldown: 60,
   scratch_cooldown: 30,
   maintenance_mode: false,
+  ad_popunder: '',
+  ad_social_bar: '',
+  ad_banner_728x90: '',
+  ad_banner_468x60: '',
+  ad_banner_320x50: '',
+  ad_square_300x250: '',
+  ad_native_top: '',
+  ad_native_bottom: '',
   registrations_enabled: true,
   bkash_number: '01700000000',
   nagad_number: '01700000000',
