@@ -22,9 +22,13 @@ import Captcha from '@/pages/Captcha';
 import ColorMatch from '@/pages/ColorMatch';
 import EcoScanner from '@/pages/EcoScanner';
 import WalletPage from '@/pages/Wallet';
+import PrivacyPolicy from '@/pages/PrivacyPolicy';
+import TermsConditions from '@/pages/TermsConditions';
 import { Home, Disc, Eraser, ListChecks, Wallet, Settings, LogOut, User as UserIcon, Leaf, Zap, Users, User, Calculator, Brain, ShieldCheck, Palette, Eye, Loader2, AlertTriangle, Bell } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NotificationCenter } from '@/components/NotificationCenter';
+import { AdUnit } from '@/components/AdUnit';
+import { useGameSettings } from '@/hooks/useGameSettings';
 import { db } from '@/lib/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
@@ -91,6 +95,32 @@ const PageTransition = ({ children }: { children: React.ReactNode, key?: string 
   );
 };
 
+const AppFooter = ({ dark = false }: { dark?: boolean }) => (
+  <footer className={`mt-12 py-12 text-center border-t ${dark ? 'border-slate-800' : 'border-slate-100/50'}`}>
+    <div className="max-w-4xl mx-auto px-4 space-y-4">
+      <div className="flex flex-col items-center gap-2">
+        <div className={`text-[10px] font-black uppercase tracking-[0.3em] ${dark ? 'text-slate-500' : 'text-slate-400'}`}>
+          © {new Date().getFullYear()} Eco Ads • Sustainable Rewards
+        </div>
+        <div className={`h-[1px] w-12 ${dark ? 'bg-slate-800' : 'bg-slate-100'}`} />
+        <div className="flex flex-col items-center gap-1">
+          <div className={`flex items-center gap-3 sm:gap-4 text-[9px] sm:text-[10px] font-black uppercase tracking-widest mt-2 px-5 py-2.5 rounded-2xl border ${dark ? 'border-slate-800 bg-slate-900/50' : 'border-slate-100 bg-white/50 shadow-sm'}`}>
+            <span className="flex items-center gap-1.5">
+              <span className={dark ? 'text-slate-500' : 'text-slate-400'}>Developer:</span> 
+              <span className="text-emerald-500/80">Sizan Mahmud</span>
+            </span>
+            <div className={`w-1 h-1 rounded-full ${dark ? 'bg-slate-800' : 'bg-slate-200'}`} />
+            <span className="flex items-center gap-1.5">
+              <span className={dark ? 'text-slate-500' : 'text-slate-400'}>Designer:</span> 
+              <span className="text-blue-500/80">Black Dimond</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </footer>
+);
+
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAdmin, loading, logout } = useAuth();
   const [maintenance, setMaintenance] = React.useState(false);
@@ -104,7 +134,27 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
     return () => unsub();
   }, []);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (loading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+      <motion.div
+        animate={{ 
+          rotate: 360,
+          scale: [1, 1.1, 1]
+        }}
+        transition={{ 
+          rotate: { duration: 1.5, repeat: Infinity, ease: "linear" },
+          scale: { duration: 1, repeat: Infinity, ease: "easeInOut" }
+        }}
+        className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mb-6 shadow-xl shadow-emerald-500/10"
+      >
+        <Loader2 size={32} />
+      </motion.div>
+      <div className="flex flex-col items-center gap-2">
+        <h3 className="text-lg font-black text-slate-800 tracking-tight">Eco <span className="text-emerald-600">Ads</span></h3>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] animate-pulse">Establishing Secure Session</p>
+      </div>
+    </div>
+  );
   if (!user) return <Navigate to="/login" />;
   
   if (maintenance && !isAdmin) {
@@ -138,15 +188,45 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
 
 const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAdmin, loading } = useAuth();
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (loading) return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-white">
+      <motion.div
+        animate={{ 
+          rotate: 360,
+          scale: [1, 1.1, 1]
+        }}
+        transition={{ 
+          rotate: { duration: 1.5, repeat: Infinity, ease: "linear" },
+          scale: { duration: 1, repeat: Infinity, ease: "easeInOut" }
+        }}
+        className="w-16 h-16 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-600 mb-6 shadow-xl shadow-emerald-500/10"
+      >
+        <Loader2 size={32} />
+      </motion.div>
+      <div className="flex flex-col items-center gap-2">
+        <h3 className="text-lg font-black text-slate-800 tracking-tight">Eco <span className="text-emerald-600">Ads</span></h3>
+        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.2em] animate-pulse">Verifying Admin Privileges</p>
+      </div>
+    </div>
+  );
   return user && isAdmin ? <>{children}</> : <Navigate to="/admin-login" />;
 };
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
   const { user, logout, isAdmin } = useAuth();
+  const { settings } = useGameSettings();
 
   return (
     <div className="min-h-screen bg-emerald-50/20 flex flex-col">
+      {/* Global Ads (Popunder & Social Bar) */}
+      <AdUnit code={settings.ad_popunder} minimal hideLabel />
+      <AdUnit code={settings.ad_social_bar} minimal hideLabel />
+      
+      <div className="hidden">
+        {/* Prime additional ads for background scripts if any */}
+        <AdUnit code={settings.ad_banner_160x600} minimal hideLabel />
+      </div>
+      
       {/* Top Bar */}
       <header className="bg-white border-b px-4 py-3 flex items-center justify-between sticky top-0 z-50">
         <Link to="/" className="flex items-center gap-2">
@@ -167,11 +247,14 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </header>
 
-      <main className="flex-1 pb-24 sm:pb-0 sm:pl-64">
-        <div className="max-w-4xl mx-auto p-4 sm:p-8">
-          <PageTransition key={useLocation().pathname}>
-            {children}
-          </PageTransition>
+      <main className="flex-1 pb-24 sm:pb-0 sm:pl-64 flex flex-col">
+        <div className="max-w-4xl w-full mx-auto p-4 sm:p-8 flex-1 flex flex-col">
+          <div className="flex-1">
+            <PageTransition key={useLocation().pathname}>
+              {children}
+            </PageTransition>
+          </div>
+          <AppFooter />
         </div>
       </main>
 
@@ -219,6 +302,8 @@ export default function App() {
           <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
           <Route path="/register" element={<PageTransition><Register /></PageTransition>} />
           <Route path="/admin-login" element={<PageTransition><AdminLogin /></PageTransition>} />
+          <Route path="/privacy-policy" element={<PageTransition><PrivacyPolicy /></PageTransition>} />
+          <Route path="/terms-conditions" element={<PageTransition><TermsConditions /></PageTransition>} />
           <Route path="/" element={<PrivateRoute><Layout><Dashboard /></Layout></PrivateRoute>} />
           <Route path="/eco" element={<PrivateRoute><Layout><Eco /></Layout></PrivateRoute>} />
           <Route path="/mining" element={<PrivateRoute><Layout><Mining /></Layout></PrivateRoute>} />

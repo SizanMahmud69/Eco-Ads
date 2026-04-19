@@ -128,3 +128,17 @@
     @apply font-sans;
     }
 }
+
+/* Adsterra Ad Optimization */
+.ad-container iframe, 
+.ad-container img,
+.ad-container ins {
+  max-width: 100% !important;
+  height: auto !important;
+  margin: 0 auto !important;
+  border-radius: 12px !important;
+}
+
+.ad-container {
+  transition: all 0.3s ease;
+}
