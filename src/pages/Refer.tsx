@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Users, Copy, Share2, Award, UserCheck, Zap } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
+import { AdUnit } from '@/components/AdUnit';
 import { toast } from 'sonner';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
@@ -43,6 +44,8 @@ export default function Refer() {
         <h1 className="text-3xl font-bold">Refer & Earn</h1>
         <p className="text-slate-500">Invite friends and get {settings.referral_bonus || 500} points when they reach 1000 points!</p>
       </header>
+
+      <AdUnit code={settings.ad_banner_728x90} />
 
       <div className="grid gap-6">
         <Card className="bg-emerald-600 text-white border-none">
@@ -139,6 +142,10 @@ export default function Refer() {
           </Card>
         </section>
 
+        <div className="flex justify-center">
+          <AdUnit code={settings.ad_square_300x250} />
+        </div>
+
         <section className="space-y-4">
           <h2 className="text-xl font-bold">How it works</h2>
           <div className="space-y-4">
@@ -148,6 +155,8 @@ export default function Refer() {
           </div>
         </section>
       </div>
+
+      <AdUnit code={settings.ad_native_bottom} className="w-full" />
     </div>
   );
 }

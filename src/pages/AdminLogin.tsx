@@ -16,8 +16,12 @@ export default function AdminLogin() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   React.useEffect(() => {
-    if (user && isAdmin) {
-      navigate('/admin');
+    if (user) {
+      if (isAdmin) {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate('/', { replace: true });
+      }
     }
   }, [user, isAdmin, navigate]);
 

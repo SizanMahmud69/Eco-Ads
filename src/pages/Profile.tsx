@@ -11,11 +11,14 @@ import {
 import { useAuth } from '@/lib/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
+import { AdUnit } from '@/components/AdUnit';
+import { useGameSettings } from '@/hooks/useGameSettings';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
 
 export default function Profile() {
   const { user, logout } = useAuth();
+  const { settings } = useGameSettings();
   const [realActivities, setRealActivities] = React.useState<any[]>([]);
   const [loadingActivities, setLoadingActivities] = React.useState(true);
 
@@ -185,6 +188,8 @@ export default function Profile() {
         </div>
       </motion.div>
 
+      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" />
+
       {/* Stats Bento Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <motion.div variants={itemVariants} className="col-span-2 md:col-span-1">
@@ -233,6 +238,8 @@ export default function Profile() {
         </motion.div>
       </div>
 
+      <AdUnit code={settings.ad_native_bottom} className="my-6 min-h-[100px]" />
+
       <div className="grid grid-cols-1 gap-6">
         {/* Recent Activity */}
         <motion.div variants={itemVariants}>
@@ -250,27 +257,49 @@ export default function Profile() {
                   <div className="flex justify-center py-8">
                     <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
                   </div>
-                ) : realActivities.length > 0 ? realActivities.map((activity, idx) => (
-                  <div key={activity.id || idx} className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100/50 dark:border-slate-700/30">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
-                        {getActivityIcon(activity.type)}
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold">{formatActivityName(activity.type)}</span>
-                        <span className="text-[10px] text-emerald-600 font-bold">+{activity.points} Points</span>
-                      </div>
-                    </div>
-                    <span className="text-[10px] font-bold text-slate-400 uppercase">
-                      {(() => {
-                        const rawDate = activity.timestamp || activity.created_at;
-                        if (!rawDate) return 'Unknown';
-                        const date = rawDate.toMillis ? new Date(rawDate.toMillis()) : new Date(rawDate);
-                        return date.toLocaleDateString();
-                      })()}
-                    </span>
+                ) : realActivities.length > 0 ? (
+                  <div className="space-y-3">
+                    {realActivities.map((activity, idx) => {
+                      // Use a random ad code from settings for history sections to avoid duplicates
+                      const adPool = [
+                        settings.ad_banner_468x60,
+                        settings.ad_banner_320x50,
+                        settings.ad_square_300x250,
+                        settings.ad_banner_728x90
+                      ].filter(Boolean);
+                      const randomAd = adPool[idx % adPool.length];
+                      
+                      return (
+                        <React.Fragment key={activity.id || idx}>
+                          <div className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100/50 dark:border-slate-700/30">
+                            <div className="flex items-center gap-3">
+                              <div className="p-2 bg-white dark:bg-slate-800 rounded-xl shadow-sm">
+                                {getActivityIcon(activity.type)}
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="text-sm font-semibold">{formatActivityName(activity.type)}</span>
+                                <span className="text-[10px] text-emerald-600 font-bold">+{activity.points} Points</span>
+                              </div>
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-400 uppercase">
+                              {(() => {
+                                const rawDate = activity.timestamp || activity.created_at;
+                                if (!rawDate) return 'Unknown';
+                                const date = rawDate.toMillis ? new Date(rawDate.toMillis()) : new Date(rawDate);
+                                return date.toLocaleDateString();
+                              })()}
+                            </span>
+                          </div>
+                          {(idx + 1) % 2 === 0 && randomAd && (
+                            <div className="my-2 flex justify-center">
+                              <AdUnit code={randomAd} className="min-h-[50px] scale-90" minimal />
+                            </div>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </div>
-                )) : (
+                ) : (
                   <div className="text-center py-8 space-y-2">
                     <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto text-slate-400">
                       <Clock size={24} />

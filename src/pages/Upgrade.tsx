@@ -9,9 +9,12 @@ import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, onSnapshot, addDoc, serverTimestamp, doc } from 'firebase/firestore';
 import { toast } from 'sonner';
+import { AdUnit } from '@/components/AdUnit';
+import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function Upgrade() {
   const { user } = useAuth();
+  const { settings } = useGameSettings();
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
@@ -79,49 +82,61 @@ export default function Upgrade() {
         <p className="text-slate-500">Unlock your full earning potential with Eco Ads Premium.</p>
       </header>
 
+      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" minimal hideLabel />
+      <AdUnit code={settings.ad_banner_468x60} className="my-2" />
+      <AdUnit code={settings.ad_square_300x250} className="my-2" />
+
       {loading ? (
         <div className="flex justify-center py-20">
           <Loader2 className="animate-spin text-emerald-600" size={40} />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {plans.map((plan) => (
-            <Card key={plan.id} className={`relative overflow-hidden transition-all hover:shadow-xl ${plan.multiplier > 1 ? 'border-emerald-500 shadow-emerald-500/10' : ''}`}>
-              {plan.multiplier > 1 && (
-                <div className="absolute top-0 right-0 p-4">
-                  <Zap className="text-emerald-500 fill-emerald-500" size={24} />
+          {plans.map((plan, idx) => (
+            <React.Fragment key={plan.id}>
+              <Card className={`relative overflow-hidden transition-all hover:shadow-xl ${plan.multiplier > 1 ? 'border-emerald-500 shadow-emerald-500/10' : ''}`}>
+                {plan.multiplier > 1 && (
+                  <div className="absolute top-0 right-0 p-4">
+                    <Zap className="text-emerald-500 fill-emerald-500" size={24} />
+                  </div>
+                )}
+                <CardHeader>
+                  <CardTitle className="text-2xl">{plan.name}</CardTitle>
+                  <CardDescription>{plan.duration_days} Days Access</CardDescription>
+                  <div className="mt-4">
+                    <span className="text-4xl font-bold">৳{plan.price}</span>
+                    <span className="text-slate-500">/{plan.duration_days}d</span>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <ul className="space-y-3">
+                    <Feature item={`${plan.multiplier}x Points on all activities`} />
+                    {plan.features.map((feature: string, fIdx: number) => (
+                      <li key={fIdx} className="flex items-center gap-3">
+                        <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                          <Check size={12} className="text-emerald-600" />
+                        </div>
+                        <span className="text-sm text-slate-700">{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  
+                  <Button 
+                    onClick={() => setSelectedPlan(plan)}
+                    disabled={user?.is_premium}
+                    className={`w-full h-12 font-bold ${plan.multiplier > 1 ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-800 hover:bg-slate-900'}`}
+                  >
+                    {user?.is_premium ? 'Current Plan' : 'Upgrade Now'}
+                  </Button>
+                </CardContent>
+              </Card>
+              {(idx + 1) % 2 === 0 && (
+                <div className="col-span-1 md:col-span-2 lg:col-span-3 flex justify-center my-4 flex-col items-center gap-2">
+                  <AdUnit code={settings.ad_banner_728x90} className="min-h-[90px]" />
+                  <AdUnit code={settings.ad_native_bottom} className="min-h-[100px]" />
                 </div>
               )}
-              <CardHeader>
-                <CardTitle className="text-2xl">{plan.name}</CardTitle>
-                <CardDescription>{plan.duration_days} Days Access</CardDescription>
-                <div className="mt-4">
-                  <span className="text-4xl font-bold">৳{plan.price}</span>
-                  <span className="text-slate-500">/{plan.duration_days}d</span>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <ul className="space-y-3">
-                  <Feature item={`${plan.multiplier}x Points on all activities`} />
-                  {plan.features.map((feature: string, idx: number) => (
-                    <li key={idx} className="flex items-center gap-3">
-                      <div className="w-5 h-5 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                        <Check size={12} className="text-emerald-600" />
-                      </div>
-                      <span className="text-sm text-slate-700">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                
-                <Button 
-                  onClick={() => setSelectedPlan(plan)}
-                  disabled={user?.is_premium}
-                  className={`w-full h-12 font-bold ${plan.multiplier > 1 ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-800 hover:bg-slate-900'}`}
-                >
-                  {user?.is_premium ? 'Current Plan' : 'Upgrade Now'}
-                </Button>
-              </CardContent>
-            </Card>
+            </React.Fragment>
           ))}
         </div>
       )}

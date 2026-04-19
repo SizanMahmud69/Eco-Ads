@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, addDoc, increment, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
+import { AdUnit } from '@/components/AdUnit';
 
 import { useGameSettings } from '@/hooks/useGameSettings';
 
@@ -111,8 +112,12 @@ export default function WordGuess() {
         </div>
       </header>
 
+      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" minimal hideLabel />
+      <AdUnit code={settings.ad_banner_468x60} className="my-2" />
+
       <Card className="border-2 border-purple-100 shadow-xl overflow-hidden">
         <CardContent className="p-8 space-y-8">
+          <AdUnit code={settings.ad_banner_468x60} className="mb-6 min-h-[60px]" />
           {!canPlay ? (
             <div className="text-center space-y-4 py-10">
               <h2 className="text-xl font-bold text-slate-800">Daily Limit Reached</h2>
@@ -173,6 +178,10 @@ export default function WordGuess() {
 
       <div className="bg-slate-50 p-4 rounded-2xl border border-dashed border-slate-200 text-center">
         <p className="text-xs text-slate-500 italic">Hint: All words are related to nature and the environment.</p>
+      </div>
+      <div className="flex justify-center flex-col items-center gap-4 mt-8">
+        <AdUnit code={settings.ad_square_300x250} />
+        <AdUnit code={settings.ad_native_bottom} className="w-full" />
       </div>
     </div>
   );

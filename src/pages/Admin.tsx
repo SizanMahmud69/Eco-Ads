@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { 
@@ -17,6 +18,7 @@ import {
   X, 
   RefreshCw, 
   LayoutDashboard, 
+  LayoutGrid,
   ShieldCheck, 
   Ban,
   TrendingUp,
@@ -30,12 +32,14 @@ import {
   Plus,
   Trash2,
   Edit,
-  Award
+  Award,
+  Bell,
+  Info
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDocs, addDoc, deleteDoc, limit, where, increment, setDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDocs, addDoc, deleteDoc, limit, where, increment, setDoc, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore';
 
 export default function Admin() {
   const { isAdmin, logout } = useAuth();
@@ -66,6 +70,14 @@ export default function Admin() {
     spin_cooldown: 60,
     scratch_cooldown: 30,
     maintenance_mode: false,
+    ad_popunder: '',
+    ad_social_bar: '',
+    ad_banner_728x90: '',
+    ad_banner_468x60: '',
+    ad_banner_320x50: '',
+    ad_square_300x250: '',
+    ad_native_top: '',
+    ad_native_bottom: '',
     registrations_enabled: true,
     bkash_number: '01700000000',
     nagad_number: '01700000000',
@@ -74,6 +86,21 @@ export default function Admin() {
   const [loading, setLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+
+  // Prevent back navigation from admin dashboard
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
+
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalPoints: 0,
@@ -85,6 +112,8 @@ export default function Admin() {
   // Form states for adding tasks/plans
   const [newTask, setNewTask] = useState({ title: '', description: '', points_reward: 0, type: 'daily', link: '', timer: 30 });
   const [newPlan, setNewPlan] = useState({ name: '', price: 0, duration_days: 30, features: '', multiplier: 1 });
+  const [broadcast, setBroadcast] = useState({ title: '', message: '', type: 'info' as any });
+  const [broadcasting, setBroadcasting] = useState(false);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -263,6 +292,40 @@ export default function Admin() {
       toast.success('Premium request rejected');
     } catch (error) {
       toast.error('Failed to reject request');
+    }
+  };
+
+  const handleBroadcast = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!broadcast.title || !broadcast.message) {
+      toast.error('Please fill in both title and message');
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to send this notification to ALL ${users.length} users?`)) return;
+
+    setBroadcasting(true);
+    try {
+      const batch = writeBatch(db);
+      users.forEach(u => {
+        const notifRef = doc(collection(db, 'notifications'));
+        batch.set(notifRef, {
+          userId: u.uid,
+          title: broadcast.title,
+          message: broadcast.message,
+          type: broadcast.type,
+          read: false,
+          created_at: serverTimestamp()
+        });
+      });
+      await batch.commit();
+      setBroadcast({ title: '', message: '', type: 'info' });
+      toast.success(`Broadcast sent to ${users.length} users!`);
+    } catch (error) {
+      console.error("Broadcast error:", error);
+      toast.error('Failed to send broadcast');
+    } finally {
+      setBroadcasting(false);
     }
   };
 
@@ -474,10 +537,22 @@ export default function Admin() {
             onClick={() => handleNavClick('mining')} 
           />
           <AdminNavLink 
+            icon={<Bell size={20} />} 
+            label="Broadcast" 
+            active={activeTab === 'broadcast'}
+            onClick={() => handleNavClick('broadcast')} 
+          />
+          <AdminNavLink 
             icon={<Settings size={20} />} 
             label="Settings" 
             active={activeTab === 'settings'}
             onClick={() => handleNavClick('settings')} 
+          />
+          <AdminNavLink 
+            icon={<LayoutGrid size={20} />} 
+            label="Ads" 
+            active={activeTab === 'ads'} 
+            onClick={() => handleNavClick('ads')} 
           />
         </nav>
 
@@ -526,8 +601,9 @@ export default function Admin() {
         </header>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-8">
-          {activeTab === 'overview' && (
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 flex flex-col">
+          <div className="flex-1 space-y-8">
+            {activeTab === 'overview' && (
             <div className="space-y-8 animate-in fade-in duration-500">
               {/* Stats Grid */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
@@ -1038,6 +1114,95 @@ export default function Admin() {
             </div>
           )}
 
+          {activeTab === 'broadcast' && (
+            <div className="space-y-6 animate-in fade-in duration-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Broadcast System</h2>
+                  <p className="text-slate-400">Send notifications to all registered users</p>
+                </div>
+              </div>
+
+              <Card className="bg-slate-800 border-slate-700 max-w-2xl">
+                <CardHeader>
+                  <CardTitle className="text-white">New Broadcast Message</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleBroadcast} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Message Title</Label>
+                      <Input 
+                        placeholder="e.g. Weekly Bonus Alert! 🎁" 
+                        value={broadcast.title}
+                        onChange={e => setBroadcast({...broadcast, title: e.target.value})}
+                        className="bg-slate-900 border-slate-700 text-white"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Detailed Message</Label>
+                      <Textarea 
+                        placeholder="Type your message here..." 
+                        value={broadcast.message}
+                        onChange={e => setBroadcast({...broadcast, message: e.target.value})}
+                        className="bg-slate-900 border-slate-700 text-white min-h-[120px]"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Notification Type</Label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {['info', 'success', 'alert', 'gift', 'premium'].map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setBroadcast({...broadcast, type: t as any})}
+                            className={`py-2 rounded-lg border-2 transition-all text-xs font-bold uppercase tracking-wider ${broadcast.type === t ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-slate-700 text-slate-500'}`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <Button 
+                      type="submit" 
+                      disabled={broadcasting}
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 h-14 font-black text-lg gap-2 mt-4"
+                    >
+                      {broadcasting ? <RefreshCw className="animate-spin" /> : <Bell size={20} />}
+                      SEND TO {users.length} USERS
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card className="bg-indigo-500/5 border-indigo-500/20">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="w-10 h-10 bg-indigo-500/20 rounded-lg flex items-center justify-center text-indigo-400">
+                      <Info size={20} />
+                    </div>
+                    <div className="text-xs text-indigo-300">
+                      <p className="font-bold mb-1 uppercase tracking-widest text-[10px]">Real-time Alert</p>
+                      <p>Users online will receive a toast notification and audio alert instantly.</p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="bg-amber-500/5 border-amber-500/20">
+                  <CardContent className="p-4 flex items-center gap-4">
+                    <div className="w-10 h-10 bg-amber-500/20 rounded-lg flex items-center justify-center text-amber-500">
+                      <X size={20} />
+                    </div>
+                    <div className="text-xs text-amber-200">
+                      <p className="font-bold mb-1 uppercase tracking-widest text-[10px]">Immutable</p>
+                      <p>Once sent, broadcasts cannot be edited. Please double check before sending.</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'settings' && (
             <div className="animate-in slide-in-from-bottom-4 duration-500">
               <Tabs defaultValue="game_points" className="space-y-6">
@@ -1264,6 +1429,125 @@ export default function Admin() {
               </Tabs>
             </div>
           )}
+
+          {activeTab === 'ads' && (
+            <div className="space-y-6">
+              <Card className="bg-slate-800 border-slate-700 text-slate-100">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <LayoutGrid className="text-indigo-400" size={20} />
+                    Ad Network Settings (Adsterra)
+                  </CardTitle>
+                  <CardDescription className="text-slate-400">Manage your ad codes for different formats. Paste the HTML/JS code here.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Popunder Ad Code</Label>
+                      <Textarea 
+                        placeholder="Paste Popunder script here..." 
+                        value={gameSettings.ad_popunder || ''} 
+                        onChange={e => setGameSettings({...gameSettings, ad_popunder: e.target.value})}
+                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Social Bar Ad Code</Label>
+                      <Textarea 
+                        placeholder="Paste Social Bar script here..." 
+                        value={gameSettings.ad_social_bar || ''} 
+                        onChange={e => setGameSettings({...gameSettings, ad_social_bar: e.target.value})}
+                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Banner 728x90 (Header/Footer)</Label>
+                      <Textarea 
+                        placeholder="Paste Banner 728x90 script here..." 
+                        value={gameSettings.ad_banner_728x90 || ''} 
+                        onChange={e => setGameSettings({...gameSettings, ad_banner_728x90: e.target.value})}
+                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Banner 468x60 (Game/Task)</Label>
+                      <Textarea 
+                        placeholder="Paste Banner 468x60 script here..." 
+                        value={gameSettings.ad_banner_468x60 || ''} 
+                        onChange={e => setGameSettings({...gameSettings, ad_banner_468x60: e.target.value})}
+                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Banner 320x50 (Mobile View)</Label>
+                      <Textarea 
+                        placeholder="Paste Banner 320x50 script here..." 
+                        value={gameSettings.ad_banner_320x50 || ''} 
+                        onChange={e => setGameSettings({...gameSettings, ad_banner_320x50: e.target.value})}
+                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Square 300x250 (Mid-page)</Label>
+                      <Textarea 
+                        placeholder="Paste Square 300x250 script here..." 
+                        value={gameSettings.ad_square_300x250 || ''} 
+                        onChange={e => setGameSettings({...gameSettings, ad_square_300x250: e.target.value})}
+                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Native Ad Top</Label>
+                      <Textarea 
+                        placeholder="Paste Native Ad script here..." 
+                        value={gameSettings.ad_native_top || ''} 
+                        onChange={e => setGameSettings({...gameSettings, ad_native_top: e.target.value})}
+                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Native Ad Bottom</Label>
+                      <Textarea 
+                        placeholder="Paste Native Ad script here..." 
+                        value={gameSettings.ad_native_bottom || ''} 
+                        onChange={e => setGameSettings({...gameSettings, ad_native_bottom: e.target.value})}
+                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                      />
+                    </div>
+                  </div>
+                  <Button onClick={handleUpdateGameSettings} className="w-full bg-indigo-600 hover:bg-indigo-700 py-6 font-bold text-lg rounded-2xl">
+                    SAVE AD CODES
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          </div>
+
+          <footer className="mt-20 py-12 text-center border-t border-slate-800 bg-slate-900/50 rounded-b-[2rem]">
+            <div className="max-w-4xl mx-auto px-4 space-y-4">
+              <div className="flex flex-col items-center gap-2">
+                <div className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-500">
+                  © {new Date().getFullYear()} Eco Ads Management • Internal Access
+                </div>
+                <div className="h-[1px] w-12 bg-slate-800" />
+                <div className="flex flex-col items-center gap-1">
+                  <div className="flex items-center gap-3 sm:gap-4 text-[9px] sm:text-[10px] font-black uppercase tracking-widest mt-2 px-5 py-2.5 rounded-2xl border border-slate-800 bg-slate-950/50">
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-slate-500">Developer:</span> 
+                      <span className="text-emerald-500/80">Sizan Mahmud</span>
+                    </span>
+                    <div className="w-1 h-1 rounded-full bg-slate-800" />
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-slate-500">Designer:</span> 
+                      <span className="text-blue-500/80">Black Dimond</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </footer>
         </div>
       </main>
     </div>

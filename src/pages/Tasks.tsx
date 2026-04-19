@@ -4,12 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { AdUnit } from '@/components/AdUnit';
+import { useGameSettings } from '@/hooks/useGameSettings';
 import { CheckCircle2, Clock, ExternalLink, Loader2 } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, onSnapshot, addDoc, serverTimestamp, increment, arrayUnion, doc, updateDoc } from 'firebase/firestore';
 
 export default function Tasks() {
   const { user, updateUser } = useAuth();
+  const { settings } = useGameSettings();
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [completing, setCompleting] = useState<string | null>(null);
@@ -100,6 +103,9 @@ export default function Tasks() {
         <h1 className="text-3xl font-bold">Daily Tasks</h1>
         <p className="text-slate-500">Complete simple tasks to earn extra points every day.</p>
       </header>
+
+      <AdUnit code={settings.ad_banner_728x90} className="my-4 min-h-[90px]" />
+      <AdUnit code={settings.ad_banner_468x60} className="my-4 min-h-[60px]" />
 
       <div className="grid grid-cols-1 gap-4">
         {tasks.map((task) => (

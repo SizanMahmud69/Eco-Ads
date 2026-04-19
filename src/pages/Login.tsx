@@ -7,10 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { Leaf, Mail, Lock } from 'lucide-react';
+import { AdUnit } from '@/components/AdUnit';
+import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function Login() {
   const navigate = useNavigate();
   const { loginWithGoogle, loginWithEmail, user, loading, isAdmin } = useAuth();
+  const { settings } = useGameSettings();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -18,9 +21,9 @@ export default function Login() {
   React.useEffect(() => {
     if (user) {
       if (isAdmin) {
-        navigate('/admin');
+        navigate('/admin', { replace: true });
       } else {
-        navigate('/');
+        navigate('/', { replace: true });
       }
     }
   }, [user, isAdmin, navigate]);
@@ -29,6 +32,7 @@ export default function Login() {
     try {
       await loginWithGoogle();
       toast.success('Signed in with Google');
+      // No navigate here because useEffect handles it
     } catch (error) {
       toast.error('Google login failed');
     }
@@ -40,6 +44,7 @@ export default function Login() {
     try {
       await loginWithEmail(email, password);
       toast.success('Login successful');
+      // No navigate here because useEffect handles it
     } catch (error: any) {
       toast.error(error.message || 'Login failed');
     } finally {
@@ -48,7 +53,8 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-emerald-50/30 p-4">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-emerald-50/30 p-4 gap-6">
+      <AdUnit code={settings.ad_banner_728x90} minimal hideLabel />
       <Card className="w-full max-w-md border-b-4 border-emerald-500/20 shadow-xl">
         <CardHeader className="text-center pb-2">
           <div className="mx-auto w-16 h-16 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-emerald-500/20 mb-4">
@@ -116,11 +122,22 @@ export default function Login() {
             <span className="text-slate-500">Don't have an account? </span>
             <Link to="/register" className="text-emerald-600 font-bold hover:underline transition-all">Sign Up</Link>
           </div>
+
+          <div className="flex justify-center gap-4 text-[10px] font-bold uppercase tracking-widest text-slate-400 pt-4 border-t border-slate-100">
+            <Link to="/privacy-policy" className="hover:text-emerald-600 transition-colors">Privacy Policy</Link>
+            <div className="w-1 h-1 rounded-full bg-slate-300 self-center" />
+            <Link to="/terms-conditions" className="hover:text-emerald-600 transition-colors">Terms of Service</Link>
+          </div>
+          <div className="flex justify-center flex-col items-center gap-4 mt-6">
+            <AdUnit code={settings.ad_banner_468x60} />
+            <AdUnit code={settings.ad_square_300x250} />
+          </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-2 pb-6">
           <Link to="/admin-login" className="text-xs text-slate-400 hover:text-emerald-600 transition-colors font-medium">Admin Access</Link>
         </CardFooter>
       </Card>
+      <AdUnit code={settings.ad_native_bottom} className="max-w-md w-full" />
     </div>
   );
 }

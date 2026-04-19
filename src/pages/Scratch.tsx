@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { ScratchCard } from '@/components/ScratchCard';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { toast } from 'sonner';
 import { SCRATCH_COOLDOWN } from '@/constants';
 import confetti from 'canvas-confetti';
+import { AdUnit } from '@/components/AdUnit';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, increment, doc, getDoc } from 'firebase/firestore';
 import { History as HistoryIcon } from 'lucide-react';
@@ -115,8 +116,13 @@ export default function Scratch() {
         <p className="text-slate-500">Scratch the card to reveal your prize!</p>
       </header>
 
-      <div className="flex justify-center">
+      <AdUnit code={settings.ad_banner_728x90} minimal hideLabel />
+      <AdUnit code={settings.ad_native_top} className="my-2" />
+
+      <div className="flex justify-center flex-col items-center gap-4">
+        <AdUnit code={settings.ad_banner_468x60} />
         <ScratchCard onComplete={handleScratchResult} disabled={!canScratch || loading} minPoints={pointsRange.min} maxPoints={pointsRange.max} multiplier={user?.multiplier || 1} />
+        <AdUnit code={settings.ad_banner_320x50} />
       </div>
 
       <Card className="max-w-md mx-auto">
@@ -146,6 +152,10 @@ export default function Scratch() {
         </CardContent>
       </Card>
 
+      <div className="flex justify-center">
+        <AdUnit code={settings.ad_square_300x250} />
+      </div>
+
       <Card className="mt-8">
         <CardHeader className="flex flex-row items-center gap-2">
           <HistoryIcon className="h-5 w-5 text-emerald-600" />
@@ -170,23 +180,37 @@ export default function Scratch() {
                   </TableCell>
                 </TableRow>
               ) : (
-                history.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="text-slate-600">
-                      {item.created_at?.toMillis 
-                        ? new Date(item.created_at.toMillis()).toLocaleString() 
-                        : 'Processing...'}
-                    </TableCell>
-                    <TableCell className="text-right font-bold text-emerald-600">
-                      +{item.points}
-                    </TableCell>
-                  </TableRow>
+                history.map((item, idx) => (
+                  <React.Fragment key={item.id}>
+                    <TableRow>
+                      <TableCell className="text-slate-600">
+                        {item.created_at?.toMillis 
+                          ? new Date(item.created_at.toMillis()).toLocaleString() 
+                          : 'Processing...'}
+                      </TableCell>
+                      <TableCell className="text-right font-bold text-emerald-600">
+                        +{item.points}
+                      </TableCell>
+                    </TableRow>
+                    {(idx + 1) % 2 === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={2} className="p-2">
+                          <div className="flex justify-center flex-col items-center gap-2">
+                            <AdUnit code={settings.ad_banner_320x50} className="min-h-[50px]" />
+                            <AdUnit code={settings.ad_banner_468x60} className="min-h-[60px]" />
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
                 ))
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <AdUnit code={settings.ad_native_bottom} />
     </div>
   );
 }

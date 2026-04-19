@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ReferralPopup } from '@/components/ReferralPopup';
+import { AdUnit } from '@/components/AdUnit';
 import { collection, query, where, getDocs, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { 
@@ -30,9 +31,26 @@ export default function Dashboard() {
     totalEarnings: 0,
     totalWithdrawals: 0,
     remainingToday: 2000,
+    weeklyTrend: 0,
+    withdrawTrend: 0,
+    balanceTrend: 0,
     chartData: [] as any[],
   });
   const [loading, setLoading] = useState(true);
+
+  // Prevent back navigation from dashboard
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    window.history.pushState(null, '', window.location.href);
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -90,6 +108,7 @@ export default function Dashboard() {
         });
 
         // Prepare Chart Data (Last 7 Days)
+        let earnedThisWeekTotal = 0;
         const last7Days = Array.from({ length: 7 }, (_, i) => {
           const date = subDays(new Date(), 6 - i);
           const dayEarnings = historyData
@@ -101,16 +120,66 @@ export default function Dashboard() {
             })
             .reduce((sum, item) => sum + (item.points || 0), 0);
           
+          earnedThisWeekTotal += dayEarnings;
           return {
             name: format(date, 'EEE'),
             points: dayEarnings
           };
         });
 
+        // Calculate previous 7 days trend (7-14 days ago)
+        let earnedLastWeekTotal = 0;
+        const sevenDaysAgo = startOfDay(subDays(today, 7));
+        const fourteenDaysAgo = startOfDay(subDays(today, 14));
+
+        historyData.forEach(item => {
+          const rawDate = item.timestamp || item.created_at;
+          if (!rawDate) return;
+          const itemDate = rawDate.toMillis ? new Date(rawDate.toMillis()) : new Date(rawDate);
+          
+          if (itemDate < sevenDaysAgo && itemDate >= fourteenDaysAgo && (item.points || 0) > 0) {
+            earnedLastWeekTotal += item.points;
+          }
+        });
+
+        // Withdrawal Trends
+        const withdrawData = withdrawSnap.docs.map(doc => doc.data());
+        let withdrawnThisWeekTotal = 0;
+        let withdrawnLastWeekTotal = 0;
+
+        withdrawData.forEach(item => {
+          const rawDate = item.created_at;
+          if (!rawDate) return;
+          const itemDate = rawDate.toMillis ? new Date(rawDate.toMillis()) : new Date(rawDate);
+          const amount = item.amountPoints || item.amount || 0;
+
+          if (itemDate >= sevenDaysAgo && itemDate <= today) {
+            withdrawnThisWeekTotal += amount;
+          } else if (itemDate < sevenDaysAgo && itemDate >= fourteenDaysAgo) {
+            withdrawnLastWeekTotal += amount;
+          }
+        });
+
+        const calcTrend = (now: number, then: number) => {
+          if (then > 0) return Math.round(((now - then) / then) * 100);
+          return now > 0 ? 100 : 0;
+        };
+
+        const earnedTrend = calcTrend(earnedThisWeekTotal, earnedLastWeekTotal);
+        const wTrend = calcTrend(withdrawnThisWeekTotal, withdrawnLastWeekTotal);
+        
+        // Balance Trend: Comparing net accumulation (Earned - Withdrawn)
+        const netThisWeek = earnedThisWeekTotal - withdrawnThisWeekTotal;
+        const netLastWeek = earnedLastWeekTotal - withdrawnLastWeekTotal;
+        const bTrend = calcTrend(netThisWeek, netLastWeek);
+
         setStats({
           totalEarnings: totalEarned,
           totalWithdrawals: totalWithdrawn,
           remainingToday: Math.max(0, (settings.daily_point_limit || 2000) - earnedToday),
+          weeklyTrend: earnedTrend,
+          withdrawTrend: wTrend,
+          balanceTrend: bTrend,
           chartData: last7Days,
         });
       } catch (error) {
@@ -166,6 +235,10 @@ export default function Dashboard() {
         <div className="absolute -bottom-10 left-0 w-40 h-40 bg-indigo-500/5 blur-[60px] rounded-full -ml-20 group-hover:bg-indigo-500/10 transition-colors duration-700" />
       </header>
 
+      <AdUnit code={settings.ad_banner_728x90} className="w-full" minimal hideLabel />
+      <AdUnit code={settings.ad_native_top} className="w-full my-4 min-h-[100px]" />
+      <AdUnit code={settings.ad_banner_468x60} className="w-full my-2" />
+
       {/* Main Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard 
@@ -174,7 +247,7 @@ export default function Dashboard() {
           subtitle="All Time" 
           icon={<ArrowUpRight className="text-emerald-500" />} 
           color="bg-emerald-50"
-          trend="+12% this week"
+          trend={`${stats.weeklyTrend >= 0 ? '+' : ''}${stats.weeklyTrend}% this week`}
         />
         <StatCard 
           title="Total Withdraw" 
@@ -182,6 +255,7 @@ export default function Dashboard() {
           subtitle="Processed" 
           icon={<ArrowDownRight className="text-rose-500" />} 
           color="bg-rose-50"
+          trend={`${stats.withdrawTrend >= 0 ? '+' : ''}${stats.withdrawTrend}% this week`}
         />
         <StatCard 
           title="Current Balance" 
@@ -189,6 +263,7 @@ export default function Dashboard() {
           subtitle="Available" 
           icon={<Wallet className="text-blue-500" />} 
           color="bg-blue-50"
+          trend={`${stats.balanceTrend >= 0 ? '+' : ''}${stats.balanceTrend}% this week`}
         />
         <StatCard 
           title="Account Status" 
@@ -207,6 +282,10 @@ export default function Dashboard() {
       </div>
 
       {/* Performance Graph */}
+      <div className="flex flex-col gap-4 items-center my-6">
+        <AdUnit code={settings.ad_square_300x250} className="min-h-[250px]" />
+        <AdUnit code={settings.ad_banner_320x50} className="min-h-[50px]" />
+      </div>
       <Card className="border-none shadow-xl shadow-slate-200/50 overflow-hidden bg-white">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-7">
           <div className="space-y-1">
@@ -269,6 +348,7 @@ export default function Dashboard() {
       </Card>
 
       {/* Quick Actions Section */}
+      <AdUnit code={settings.ad_native_bottom} className="w-full" />
       <section className="space-y-6">
         <div className="flex items-center justify-between">
           <div className="space-y-1">
@@ -343,33 +423,37 @@ export default function Dashboard() {
   );
 }
 
-const StatCard = ({ title, value, subtitle, icon, color, trend }: any) => (
-  <Card className="border-none shadow-xl shadow-slate-200/30 bg-white rounded-[2rem] overflow-hidden group hover:scale-[1.02] transition-all duration-300 relative border-b-[6px] border-emerald-500/10">
-    <CardContent className="p-6 flex flex-col gap-4 relative z-10">
-      <div className="flex items-center justify-between">
-        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${color} group-hover:rotate-6 transition-transform duration-300 shadow-sm`}>
-          {icon}
-        </div>
-        {trend && (
-          <div className="flex items-center gap-1 text-[10px] font-black text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100/50">
-            <TrendingUp size={10} />
-            {trend}
+const StatCard = ({ title, value, subtitle, icon, color, trend }: any) => {
+  const isNegative = trend && trend.startsWith('-');
+  
+  return (
+    <Card className="border-none shadow-xl shadow-slate-200/30 bg-white rounded-[2rem] overflow-hidden group hover:scale-[1.02] transition-all duration-300 relative border-b-[6px] border-emerald-500/10">
+      <CardContent className="p-6 flex flex-col gap-4 relative z-10">
+        <div className="flex items-center justify-between">
+          <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${color} group-hover:rotate-6 transition-transform duration-300 shadow-sm`}>
+            {icon}
           </div>
-        )}
-      </div>
-      <div className="space-y-1">
-        <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] leading-none">{title}</p>
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-2xl font-black text-slate-900 tracking-tight">
-            {typeof value === 'number' ? value.toLocaleString() : value}
-          </span>
-          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{subtitle}</span>
+          {trend && (
+            <div className={`flex items-center gap-1 text-[10px] font-black ${isNegative ? 'text-rose-600 bg-rose-50 border-rose-100/50' : 'text-emerald-600 bg-emerald-50 border-emerald-100/50'} px-2.5 py-1 rounded-full border`}>
+              {isNegative ? <ArrowDownRight size={10} /> : <TrendingUp size={10} />}
+              {trend}
+            </div>
+          )}
         </div>
-      </div>
-    </CardContent>
-    <div className="absolute -bottom-12 -left-12 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/10 transition-colors" />
-  </Card>
-);
+        <div className="space-y-1">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em] leading-none">{title}</p>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-2xl font-black text-slate-900 tracking-tight">
+              {typeof value === 'number' ? value.toLocaleString() : value}
+            </span>
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{subtitle}</span>
+          </div>
+        </div>
+      </CardContent>
+      <div className="absolute -bottom-12 -left-12 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl group-hover:bg-emerald-500/10 transition-colors" />
+    </Card>
+  );
+};
 
 const ActionCard = ({ to, icon, label, color, completed, isPremium }: any) => {
   const { user } = useAuth();

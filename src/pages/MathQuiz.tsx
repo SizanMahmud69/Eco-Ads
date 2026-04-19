@@ -9,6 +9,7 @@ import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, addDoc, increment, doc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
+import { AdUnit } from '@/components/AdUnit';
 
 import { useGameSettings } from '@/hooks/useGameSettings';
 
@@ -140,6 +141,9 @@ export default function MathQuiz() {
         </div>
       </header>
 
+      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" minimal hideLabel />
+      <AdUnit code={settings.ad_banner_468x60} className="my-2" />
+
       {!isPlaying ? (
         <Card className="border-2 border-blue-100 shadow-xl overflow-hidden">
           <CardContent className="p-8 text-center space-y-6">
@@ -223,6 +227,10 @@ export default function MathQuiz() {
           </Card>
         </motion.div>
       )}
+      <div className="flex justify-center items-center flex-col gap-4 mt-8">
+        <AdUnit code={settings.ad_square_300x250} />
+        <AdUnit code={settings.ad_native_bottom} className="w-full" />
+      </div>
     </div>
   );
 }

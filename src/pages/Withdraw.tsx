@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { AdUnit } from '@/components/AdUnit';
 import { useGameSettings } from '@/hooks/useGameSettings';
 
 import { Wallet, History, AlertCircle, Check } from 'lucide-react';
@@ -130,6 +131,8 @@ export default function Withdraw() {
         <p className="text-slate-500">Convert your hard-earned points into real money.</p>
       </header>
 
+      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" />
+
       <div className="grid grid-cols-3 gap-4">
         {[
           { id: 'bKash', logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/8/8b/Bkash_logo.svg/512px-Bkash_logo.svg.png' },
@@ -165,6 +168,8 @@ export default function Withdraw() {
         ))}
       </div>
 
+      <AdUnit code={settings.ad_native_bottom} className="w-full my-6 min-h-[100px]" />
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Withdrawal Form */}
         <Card>
@@ -176,6 +181,7 @@ export default function Withdraw() {
             <CardDescription>{settings.points_per_bdt || 1000} Points = 1 BDT</CardDescription>
           </CardHeader>
           <CardContent>
+            <AdUnit code={settings.ad_square_300x250} className="mb-6 min-h-[250px]" />
             <form onSubmit={handleWithdraw} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="points">Points to Withdraw</Label>
@@ -266,17 +272,38 @@ export default function Withdraw() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {withdrawals.slice(0, 5).map((w) => (
-                    <TableRow key={w.id}>
-                      <TableCell className="font-medium">৳ {w.amountBDT}</TableCell>
-                      <TableCell>{w.method}</TableCell>
-                      <TableCell>
-                        <Badge variant={w.status === 'approved' ? 'default' : w.status === 'pending' ? 'secondary' : 'destructive'}>
-                          {w.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {withdrawals.slice(0, 10).map((w, idx) => {
+                    const adPool = [
+                      settings.ad_banner_468x60,
+                      settings.ad_banner_320x50,
+                      settings.ad_square_300x250,
+                      settings.ad_native_bottom
+                    ].filter(Boolean);
+                    const randomAd = adPool[idx % adPool.length];
+
+                    return (
+                      <React.Fragment key={w.id}>
+                        <TableRow>
+                          <TableCell className="font-medium">৳ {w.amountBDT}</TableCell>
+                          <TableCell>{w.method}</TableCell>
+                          <TableCell>
+                            <Badge variant={w.status === 'approved' ? 'default' : w.status === 'pending' ? 'secondary' : 'destructive'}>
+                              {w.status}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                        {(idx + 1) % 3 === 0 && randomAd && (
+                          <TableRow>
+                            <TableCell colSpan={3} className="p-2 border-none">
+                              <div className="flex justify-center">
+                                <AdUnit code={randomAd} className="min-h-[50px] scale-90" minimal />
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                   {withdrawals.length === 0 && (
                     <TableRow>
                       <TableCell colSpan={3} className="text-center py-8 text-slate-400">No history found</TableCell>

@@ -25,9 +25,12 @@ import { db } from '@/lib/firebase';
 import { collection, query, where, orderBy, onSnapshot, limit, getDoc, doc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import { AdUnit } from '@/components/AdUnit';
+import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function Wallet() {
   const { user } = useAuth();
+  const { settings } = useGameSettings();
   const navigate = useNavigate();
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -141,6 +144,8 @@ export default function Wallet() {
         </Card>
       </motion.div>
 
+      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" />
+
       {/* History Section */}
       <section className="space-y-4">
         <div className="flex items-center justify-between px-2">
@@ -166,33 +171,41 @@ export default function Wallet() {
               </div>
             ) : history.length > 0 ? (
               history.map((item, idx) => (
-                <motion.div
-                  key={item.id}
-                  initial={{ x: -20, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  transition={{ delay: idx * 0.05 }}
-                >
-                  <Card className="border-slate-100 shadow-sm hover:shadow-md transition-shadow rounded-2xl overflow-hidden">
-                    <CardContent className="p-4 flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center shadow-inner">
-                        {getIcon(item.type)}
-                      </div>
-                      <div className="flex-1">
-                        <h4 className="font-bold text-sm capitalize">{item.type.replace('_', ' ')}</h4>
-                        <p className="text-[10px] text-slate-400 font-medium">
-                          {new Date(item.created_at).toLocaleString()}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-center gap-1 text-emerald-600 font-black">
-                          <TrendingUp size={14} />
-                          <span>+{item.points}</span>
+                <div key={item.id}>
+                  <motion.div
+                    initial={{ x: -20, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    transition={{ delay: idx * 0.05 }}
+                    className="mb-3"
+                  >
+                    <Card className="border-slate-100 shadow-sm hover:shadow-md transition-shadow rounded-2xl overflow-hidden">
+                      <CardContent className="p-4 flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-slate-50 flex items-center justify-center shadow-inner">
+                          {getIcon(item.type)}
                         </div>
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Points</p>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
+                        <div className="flex-1">
+                          <h4 className="font-bold text-sm capitalize">{item.type.replace('_', ' ')}</h4>
+                          <p className="text-[10px] text-slate-400 font-medium">
+                            {new Date(item.created_at).toLocaleString()}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="flex items-center gap-1 text-emerald-600 font-black">
+                            <TrendingUp size={14} />
+                            <span>+{item.points}</span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">Points</p>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                  
+                  {(idx + 1) % 4 === 0 && (
+                    <div className="my-4 flex justify-center">
+                      <AdUnit code={settings.ad_banner_468x60} className="min-h-[60px]" />
+                    </div>
+                  )}
+                </div>
               ))
             ) : (
               <div className="text-center py-20 space-y-4">

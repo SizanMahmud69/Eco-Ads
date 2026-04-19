@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { SpinWheel } from '@/components/SpinWheel';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
 import { SPIN_COOLDOWN } from '@/constants';
+import { AdUnit } from '@/components/AdUnit';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, increment, doc, getDoc } from 'firebase/firestore';
 import { History as HistoryIcon, Sparkles } from 'lucide-react';
@@ -132,8 +133,13 @@ export default function Spin() {
         <p className="text-slate-500 font-medium">Try your luck and win big points every hour!</p>
       </header>
 
-      <div className="flex justify-center py-4">
+      <AdUnit code={settings.ad_banner_728x90} minimal hideLabel />
+      <AdUnit code={settings.ad_square_300x250} className="my-2" />
+
+      <div className="flex justify-center py-4 flex-col items-center gap-4">
+        <AdUnit code={settings.ad_banner_468x60} />
         <SpinWheel onSpin={handleSpinResult} disabled={!canSpin || loading} segments={segments.length > 0 ? segments : undefined} />
+        <AdUnit code={settings.ad_banner_320x50} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
@@ -190,17 +196,30 @@ export default function Spin() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  history.map((item) => (
-                    <TableRow key={item.id} className="hover:bg-slate-50/50 border-slate-50 transition-colors">
-                      <TableCell className="text-slate-600 font-medium pl-6 py-4">
-                        {item.created_at?.toMillis 
-                          ? new Date(item.created_at.toMillis()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-                          : 'Processing...'}
-                      </TableCell>
-                      <TableCell className="text-right font-black text-emerald-600 pr-6 py-4">
-                        +{item.points}
-                      </TableCell>
-                    </TableRow>
+                  history.map((item, idx) => (
+                    <React.Fragment key={item.id}>
+                      <TableRow className="hover:bg-slate-50/50 border-slate-50 transition-colors">
+                        <TableCell className="text-slate-600 font-medium pl-6 py-4">
+                          {item.created_at?.toMillis 
+                            ? new Date(item.created_at.toMillis()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                            : 'Processing...'}
+                        </TableCell>
+                        <TableCell className="text-right font-black text-emerald-600 pr-6 py-4">
+                          +{item.points}
+                        </TableCell>
+                      </TableRow>
+                      {(idx + 1) % 2 === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={2} className="p-2">
+                            <div className="flex justify-center flex-col items-center gap-2">
+                              {/* Using a secondary ad for variation */}
+                              <AdUnit code={settings.ad_banner_320x50} className="min-h-[50px]" />
+                              <AdUnit code={settings.ad_banner_468x60} className="min-h-[60px]" />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </React.Fragment>
                   ))
                 )}
               </TableBody>
@@ -208,6 +227,8 @@ export default function Spin() {
           </CardContent>
         </Card>
       </div>
+
+      <AdUnit code={settings.ad_native_bottom} className="w-full" />
     </div>
   );
 }
