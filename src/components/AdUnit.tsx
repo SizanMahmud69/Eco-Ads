@@ -1,56 +1,330 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useId } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { X } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { useAuth } from '@/lib/AuthContext';
 
 interface AdUnitProps {
   code: string | undefined;
   className?: string;
   hideLabel?: boolean;
   minimal?: boolean;
+  overlay?: boolean;
+  stickyBottom?: boolean;
 }
 
-export const AdUnit: React.FC<AdUnitProps> = ({ code, className = "", hideLabel = false, minimal = false }) => {
+export const AdUnit: React.FC<AdUnitProps> = ({ 
+  code, 
+  className = "", 
+  hideLabel = false, 
+  minimal = false,
+  overlay = false,
+  stickyBottom = false
+}) => {
   const adRef = useRef<HTMLDivElement>(null);
-  const isFixedAd = code?.includes('at.effect') || code?.includes('socbar') || code?.includes('popunder');
+  const uid = useId().replace(/:/g, '-'); // Generate unique ID for this instance
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isVisible, setIsVisible] = React.useState(true);
+  const [showCloseButton, setShowCloseButton] = React.useState(false);
+  const location = useLocation();
+  const { isAdmin } = useAuth();
+  const isAdminPanel = location.pathname.startsWith('/admin');
+  
+  // Interval to show sticky ad if it was closed (every 45-50s)
+  useEffect(() => {
+    if (!stickyBottom || !code || isAdmin) return;
+
+    const showAd = () => {
+      setIsVisible(true);
+    };
+
+    const intervalId = setInterval(showAd, 45000 + Math.random() * 5000); // 45-50 seconds randomly
+    
+    return () => clearInterval(intervalId);
+  }, [stickyBottom, code, isAdmin]);
+
+  // Close button timer for sticky ad
+  useEffect(() => {
+    if (stickyBottom && isVisible && !isAdmin) {
+      setShowCloseButton(false);
+      const timer = setTimeout(() => {
+        setShowCloseButton(true);
+      }, 10000); // 10 seconds
+      
+      return () => clearTimeout(timer);
+    }
+  }, [stickyBottom, isVisible, isAdmin]);
+  
+  const isVideoAd = typeof code === 'string' && (code.includes('instream') || code.includes('video'));
+  
+  const isFixedAd = typeof code === 'string' && (
+    code.includes('at.effect') || 
+    code.includes('socbar') || 
+    code.includes('popunder') || 
+    code.includes('clickadilla') ||
+    isVideoAd ||
+    overlay
+  );
 
   useEffect(() => {
-    if (!code || !adRef.current) return;
+    if (!code || !isVisible || isAdminPanel || isAdmin) return;
+    
+    // Small delay to ensure DOM is ready especially inside AnimatePresence
+    const timer = setTimeout(() => {
+      if (!adRef.current) return;
+      setIsLoading(false);
 
-    // Clear previous ad
-    adRef.current.innerHTML = '';
+      // Clear previous ad
+      adRef.current.innerHTML = '';
 
-    try {
-      // Use range to properly parse and execute scripts in the HTML string
-      const range = document.createRange();
-      range.setStart(adRef.current, 0);
-      const fragment = range.createContextualFragment(code);
-      adRef.current.appendChild(fragment);
-    } catch (err) {
-      console.error('Error rendering ad unit:', err);
-      // Fallback to basic innerHTML if range fails
-      adRef.current.innerHTML = code;
+      // If it's a fixed ad (popunder, social bar), we render it safely
+      if (isFixedAd) {
+        try {
+          // Robust injection using contextual fragment for better cross-network support
+          const range = document.createRange();
+          range.setStart(adRef.current, 0);
+          const fragment = range.createContextualFragment(code);
+          adRef.current.appendChild(fragment);
+          
+          // Re-execute scripts manually because fragments don't auto-execute <script> tags when appended to DOM
+          const scripts = adRef.current.querySelectorAll('script');
+          scripts.forEach(oldScript => {
+            const newScript = document.createElement('script');
+            // Copy all attributes
+            Array.from(oldScript.attributes).forEach(attr => {
+              newScript.setAttribute(attr.name, attr.value);
+            });
+            // Copy content
+            newScript.innerHTML = oldScript.innerHTML;
+            if (oldScript.src) {
+              newScript.src = oldScript.src;
+              newScript.async = true;
+            }
+            
+            // Mark it so we can clean it up
+            newScript.setAttribute('data-ad-uid', uid);
+            
+            // Standard ads often prefer body or head
+            // For video/social bars, we use a more balanced approach
+            if (oldScript.src) {
+              // Network scripts usually need to be global
+              document.head.appendChild(newScript);
+            } else if (isVideoAd || code.includes('socbar')) {
+              // Initialization scripts for video/bars usually need to stay near the container
+              adRef.current?.appendChild(newScript);
+            } else {
+              document.body.appendChild(newScript);
+            }
+          });
+        } catch (err) {
+          console.warn("Fixed ad injection fallback:", err);
+          if (adRef.current) {
+            adRef.current.innerHTML = code;
+          }
+        }
+        return;
+      }
+
+      // Create a truly isolated container for this specific ad
+      const iframe = document.createElement('iframe');
+      iframe.id = `ad-frame-${uid}`;
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = 'none';
+      iframe.style.overflow = 'hidden';
+      iframe.style.display = 'block';
+      iframe.scrolling = 'no';
+      
+      adRef.current.appendChild(iframe);
+
+      const iframeDoc = iframe.contentWindow?.document || iframe.contentDocument;
+      if (iframeDoc) {
+        iframeDoc.open();
+        iframeDoc.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <style>
+                body { 
+                  margin: 0; 
+                  padding: 0; 
+                  display: flex; 
+                  flex-direction: column;
+                  justify-content: center; 
+                  align-items: center; 
+                  min-height: auto; 
+                  overflow: hidden; 
+                  background: transparent;
+                }
+                iframe, img, ins, div { max-width: 100% !important; height: auto !important; margin: 0 auto !important; position: relative !important; top: 0 !important; }
+                #ad-wrapper { width: 100%; display: flex; justify-content: center; align-items: center; min-height: 0; }
+              </style>
+            </head>
+            <body>
+              <div id="ad-wrapper">
+                ${code}
+              </div>
+              <script>
+                // Report height back to parent with unique ID
+                function reportHeight() {
+                  const height = document.body.offsetHeight || document.documentElement.scrollHeight;
+                  if (height > 0) {
+                    window.parent.postMessage({ 
+                      type: 'AD_RESIZE', 
+                      height: height, 
+                      id: 'ad-frame-${uid}' 
+                    }, '*');
+                  }
+                }
+                window.onload = reportHeight;
+                // Poll for a bit as some ads load late
+                let attempts = 0;
+                const poll = setInterval(() => {
+                  reportHeight();
+                  if (++attempts > 10) clearInterval(poll);
+                }, 1000);
+              </script>
+            </body>
+          </html>
+        `);
+        iframeDoc.close();
+      }
+    }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      // Aggressive cleanup for fixed ads if they added global elements
+      if (isFixedAd) {
+        // Remove the specific scripts we injected to head
+        const injectedScripts = document.querySelectorAll(`script[data-ad-uid="${uid}"]`);
+        injectedScripts.forEach(s => s.remove());
+        
+        // Try to find and remove elements created by common ad networks
+        const adElements = document.querySelectorAll(`[id*="${uid}"], [class*="${uid}"]`);
+        adElements.forEach(el => el.remove());
+      }
+    };
+  }, [code, uid, isFixedAd, isVisible, isAdminPanel, isAdmin]);
+
+  // Handle iframe height messages to prevent clipping
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (data && data.type === 'AD_RESIZE' && data.id === `ad-frame-${uid}` && adRef.current) {
+        const iframe = adRef.current.querySelector('iframe');
+        if (iframe) {
+          iframe.style.height = data.height + 'px';
+        }
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [uid]);
+
+  if (!code || !isVisible || isAdminPanel || isAdmin) {
+    // Aggressively try to hide any global ad elements if in admin panel
+    if (isAdminPanel || isAdmin) {
+      const socialBars = document.querySelectorAll('[id^="at-social-bar"], .at-social-bar, [class*="social-bar"]');
+      socialBars.forEach(el => (el as HTMLElement).style.display = 'none');
     }
-  }, [code]);
+    return null;
+  }
 
-  if (!code) return null;
+  // Background/overlay types (scripts that handle their own UI)
+  if (isFixedAd && !stickyBottom) {
+    return (
+      <div 
+        ref={adRef} 
+        className={overlay ? "fixed inset-0 pointer-events-none z-[9999]" : "hidden"} 
+        aria-hidden="true" 
+      />
+    );
+  }
 
-  // If it's a background or overlay ad (like Social Bar or Popunder), render it invisible
-  if (isFixedAd) {
-    return <div ref={adRef} className="hidden" aria-hidden="true" />;
+  // Floating Bottom Overlay with entrance/exit
+  if (stickyBottom) {
+    return (
+      <AnimatePresence>
+        {isVisible && code && (
+          <motion.div
+            key="sticky-ad-overlay"
+            initial={{ y: 200, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 200, opacity: 0 }}
+            transition={{ type: "spring", damping: 20, stiffness: 100, delay: 0.8 }}
+            className="fixed bottom-16 left-0 right-0 z-[99999] flex justify-center pointer-events-none"
+          >
+            <div className="relative pointer-events-auto group w-fit">
+              <AnimatePresence>
+                {showCloseButton && (
+                  <>
+                    <motion.button 
+                      initial={{ scale: 0, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      exit={{ scale: 0, opacity: 0 }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsVisible(false);
+                      }}
+                      className="absolute -top-3 -right-3 bg-red-500/90 text-white rounded-full p-1 shadow-xl hover:bg-red-600 active:scale-95 transition-all z-[100000] border-2 border-white opacity-0 group-hover:opacity-100 backdrop-blur-sm"
+                      title="Close Ad"
+                    >
+                      <X size={12} strokeWidth={4} />
+                    </motion.button>
+                  </>
+                )}
+              </AnimatePresence>
+              
+              <div className="flex flex-col items-center bg-white/10 dark:bg-black/10 backdrop-blur-xl rounded-lg overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.25)] border border-white/20 dark:border-white/5 mx-auto min-h-0 h-fit">
+                <div 
+                  ref={adRef} 
+                  className={`flex justify-center ad-content-isolated ${isVideoAd ? 'w-full min-h-[180px]' : 'w-fit h-fit min-h-0'}`} 
+                />
+              </div>
+              
+              {/* Permanent close hint for touch devices or if not hovering */}
+              {showCloseButton && (
+                <button 
+                  onClick={() => setIsVisible(false)}
+                  className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-slate-900/60 backdrop-blur-sm flex items-center justify-center group-hover:hidden transition-opacity shadow-lg border border-white/20"
+                >
+                  <X size={10} className="text-white" />
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    );
   }
 
   return (
-    <div className={`flex flex-col items-center w-full mx-auto ${minimal ? '' : 'gap-1.5'} ${className}`}>
+    <div className={`flex flex-col items-center w-full mx-auto animate-in fade-in zoom-in-95 duration-700 ${minimal ? '' : 'gap-2'} ${className}`}>
       {!hideLabel && (
-        <div className="flex items-center gap-2 w-full px-4 mb-1">
-          <div className="h-[1px] flex-1 bg-slate-100" />
-          <span className="text-[9px] font-black uppercase tracking-[0.2em] text-slate-300">Sponsored Ad</span>
-          <div className="h-[1px] flex-1 bg-slate-100" />
+        <div className="flex items-center gap-3 w-full px-4 mb-1 opacity-60 hover:opacity-100 transition-opacity">
+          <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-slate-200 dark:via-slate-700 to-transparent" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500/40 animate-pulse" />
+            <span className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-400 dark:text-slate-500">Sponsored Ad</span>
+          </div>
+          <div className="h-[1px] flex-1 bg-gradient-to-r from-transparent via-slate-200 dark:via-slate-700 to-transparent" />
         </div>
       )}
       <div 
-        ref={adRef} 
-        className={`ad-container w-full flex justify-center items-center overflow-hidden ${minimal ? '' : 'bg-slate-50/50 rounded-2xl border border-slate-100/50 p-2 min-h-[50px]'}`}
+        className={`ad-container w-full flex justify-center items-center overflow-hidden transition-all duration-500 ${minimal ? '' : 'bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm rounded-[1.2rem] md:rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm p-3 hover:shadow-md hover:border-slate-200 dark:hover:border-slate-700 transition-all'} relative`}
         style={{ maxWidth: '100%' }}
-      />
+      >
+        {isLoading && !minimal && !isFixedAd && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-50/10 backdrop-blur-[2px] z-10">
+            <div className="w-8 h-8 rounded-full border-2 border-slate-200 border-t-emerald-500 animate-spin" />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest animate-pulse">Loading Ad...</span>
+          </div>
+        )}
+        {/* Isolated div for ad script/iframe injection - React will never touch its contents after initial mount because it lacks children */}
+        <div ref={adRef} className="w-full flex justify-center ad-content-isolated" />
+      </div>
     </div>
   );
-};
+}
+

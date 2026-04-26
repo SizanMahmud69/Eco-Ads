@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc, serverTimestamp, addDoc, writeBatch } from 'firebase/firestore';
-import { Bell, Clock, CheckCircle, Info, ChevronRight, X, Gift, Zap, Pickaxe, Trash2, CheckCircle2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Bell, Clock, CheckCircle, Info, ChevronRight, X, Gift, Zap, Pickaxe, Trash2, CheckCircle2, Navigation } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow, isToday, isYesterday, format } from 'date-fns';
 import { toast } from 'sonner';
@@ -14,16 +15,23 @@ export interface Notification {
   message: string;
   type: 'info' | 'success' | 'alert' | 'gift' | 'premium' | 'mining';
   read: boolean;
+  link?: string;
   created_at: any;
 }
 
 export const NotificationCenter: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const initialLoad = useRef(true);
+  const notificationsRef = useRef<Notification[]>([]);
+
+  useEffect(() => {
+    notificationsRef.current = notifications;
+  }, [notifications]);
 
   useEffect(() => {
     // Hidden audio element for notification sound
@@ -43,32 +51,36 @@ export const NotificationCenter: React.FC = () => {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Notification[];
-      
-      // If new unread notification arrives and it's not the first load
-      if (!initialLoad.current && data.length > notifications.length) {
-        const hasNewUnread = data.some(n => !n.read && !notifications.find(old => old.id === n.id));
-        if (hasNewUnread) {
-          const newest = data.find(n => !n.read && !notifications.find(old => old.id === n.id));
-          if (newest) {
-            toast(newest.title, {
-              description: newest.message,
-              icon: getIcon(newest.type),
-            });
-            audioRef.current?.play().catch(e => console.log('Audio play failed', e));
+      try {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as Notification[];
+        
+        // If new unread notification arrives and it's not the first load
+        if (!initialLoad.current && data.length > (notificationsRef.current?.length || 0)) {
+          const hasNewUnread = data.some(n => !n.read && !notificationsRef.current?.find(old => old.id === n.id));
+          if (hasNewUnread) {
+            const newest = data.find(n => !n.read && !notificationsRef.current?.find(old => old.id === n.id));
+            if (newest) {
+              toast(newest.title, {
+                description: newest.message,
+                icon: getIcon(newest.type),
+              });
+              audioRef.current?.play().catch(e => console.log('Audio play failed', e));
+            }
           }
         }
-      }
 
-      setNotifications(data);
-      setUnreadCount(data.filter(n => !n.read).length);
-      initialLoad.current = false;
+        setNotifications(data);
+        setUnreadCount(data.filter(n => !n.read).length);
+        initialLoad.current = false;
+      } catch (err) {
+        console.error("Error processing notifications:", err);
+      }
     }, (error) => {
       console.error("Notification listener error:", error);
     });
 
     return () => unsubscribe();
-  }, [user, notifications]);
+  }, [user?.uid]);
 
   // Periodic check for game availability
   useEffect(() => {
@@ -82,15 +94,15 @@ export const NotificationCenter: React.FC = () => {
       const hourInMs = 60 * 60 * 1000;
       
       if (lastSpin > 0 && (now - lastSpin) >= hourInMs) {
-        sendLocalNotification('Spin & Win is Ready!', 'Your hourly spin is now available. Try your luck!', 'success');
+        sendLocalNotification('Spin & Win is Ready!', 'Your hourly spin is now available. Try your luck!', 'success', '/spin');
       }
 
       if (lastScratch > 0 && (now - lastScratch) >= hourInMs) {
-        sendLocalNotification('Scratch Card is Ready!', 'Get your guaranteed points now!', 'success');
+        sendLocalNotification('Scratch Card is Ready!', 'Get your guaranteed points now!', 'success', '/scratch');
       }
     };
 
-    const sendLocalNotification = async (title: string, message: string, type: 'info' | 'success' | 'alert') => {
+    const sendLocalNotification = async (title: string, message: string, type: 'info' | 'success' | 'alert', link?: string) => {
       const recent = notifications.find(n => n.title === title && Date.now() - (n.created_at?.toMillis?.() || Date.now()) < 3600000);
       if (recent) return;
 
@@ -100,6 +112,7 @@ export const NotificationCenter: React.FC = () => {
           title,
           message,
           type,
+          link: link || null,
           read: false,
           created_at: serverTimestamp()
         });
@@ -110,7 +123,24 @@ export const NotificationCenter: React.FC = () => {
 
     const interval = setInterval(checkAvailability, 60000);
     return () => clearInterval(interval);
-  }, [user, notifications]);
+  }, [user?.uid]);
+
+  const markAsRead = async (id: string) => {
+    try {
+      const ref = doc(db, 'notifications', id);
+      await updateDoc(ref, { read: true });
+    } catch (err) {
+      console.error("Mark as read error:", err);
+    }
+  };
+
+  const handleNotificationClick = async (n: Notification) => {
+    if (!n.read) await markAsRead(n.id);
+    if (n.link) {
+      setIsOpen(false);
+      navigate(n.link);
+    }
+  };
 
   const markAllAsRead = async () => {
     if (unreadCount === 0) return;
@@ -152,7 +182,18 @@ export const NotificationCenter: React.FC = () => {
     };
 
     notifs.forEach(n => {
-      const date = n.created_at?.toMillis ? new Date(n.created_at.toMillis()) : new Date();
+      let date: Date;
+      try {
+        if (n.created_at?.toDate) date = n.created_at.toDate();
+        else if (n.created_at?.toMillis) date = new Date(n.created_at.toMillis());
+        else if (n.created_at) date = new Date(n.created_at);
+        else date = new Date();
+        
+        if (isNaN(date.getTime())) date = new Date();
+      } catch (e) {
+        date = new Date();
+      }
+
       if (isToday(date)) groups.Today.push(n);
       else if (isYesterday(date)) groups.Yesterday.push(n);
       else groups.Earlier.push(n);
@@ -166,7 +207,6 @@ export const NotificationCenter: React.FC = () => {
       <button 
         onClick={() => {
           setIsOpen(!isOpen);
-          if (!isOpen && unreadCount > 0) markAllAsRead();
         }}
         className={`relative p-2.5 rounded-xl transition-all duration-300 ${isOpen ? 'bg-emerald-100 text-emerald-700 shadow-lg shadow-emerald-500/10' : 'text-slate-500 hover:text-emerald-600 hover:bg-emerald-50'}`}
       >
@@ -230,23 +270,41 @@ export const NotificationCenter: React.FC = () => {
                           <motion.div 
                             key={n.id} 
                             whileHover={{ x: 4 }}
-                            className={`p-4 rounded-2xl flex items-start gap-4 transition-all border-2 ${n.read ? 'opacity-80 bg-white border-transparent' : 'bg-emerald-50/20 border-emerald-500/5 shadow-sm'}`}
+                            onClick={() => handleNotificationClick(n)}
+                            className={`p-4 rounded-2xl flex items-start gap-4 transition-all border-2 cursor-pointer ${n.read ? 'opacity-80 bg-white border-transparent' : 'bg-emerald-50/20 border-emerald-500/5 shadow-sm'}`}
                           >
                             <div className={`p-2 rounded-xl shrink-0 ${n.read ? 'bg-slate-50' : 'bg-white shadow-sm'}`}>
                               {getIcon(n.type)}
                             </div>
                             <div className="flex-1 min-w-0 space-y-1">
                               <div className="flex items-center justify-between gap-2">
-                                <p className={`text-sm font-bold truncate ${n.read ? 'text-slate-600' : 'text-slate-900 dark:text-white'}`}>{n.title}</p>
-                                {!n.read && (
-                                  <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                                )}
+                                <div className="flex items-center gap-2 overflow-hidden">
+                                  <p className={`text-sm font-bold truncate ${n.read ? 'text-slate-600' : 'text-slate-900 dark:text-white'}`}>{n.title}</p>
+                                  {!n.read && (
+                                    <span className="px-1.5 py-0.5 rounded-md bg-emerald-500 text-white text-[8px] font-black uppercase tracking-tighter">New</span>
+                                  )}
+                                </div>
+                                {n.link && <Navigation size={12} className="text-slate-300 shrink-0" />}
                               </div>
                               <p className="text-[11px] text-slate-500 leading-relaxed font-medium line-clamp-2">{n.message}</p>
                               <div className="flex items-center gap-1.5 pt-1">
                                 <Clock size={10} className="text-slate-300" />
                                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                                  {n.created_at ? formatDistanceToNow(n.created_at.toMillis(), { addSuffix: true }) : 'Just now'}
+                                  {(() => {
+                                    try {
+                                      let date: Date | null = null;
+                                      if (n.created_at?.toDate) date = n.created_at.toDate();
+                                      else if (n.created_at?.toMillis) date = new Date(n.created_at.toMillis());
+                                      else if (n.created_at) date = new Date(n.created_at);
+                                      
+                                      if (date && !isNaN(date.getTime())) {
+                                        return formatDistanceToNow(date, { addSuffix: true });
+                                      }
+                                      return 'Recently';
+                                    } catch (e) {
+                                      return 'Recently';
+                                    }
+                                  })()}
                                 </span>
                               </div>
                             </div>
