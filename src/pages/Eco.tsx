@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { AdUnit } from '@/components/AdUnit';
 import { useGameSettings } from '@/hooks/useGameSettings';
-import { Disc, Eraser, ListChecks, ArrowRight, Pickaxe, Calculator, Brain, ShieldCheck, Palette, QrCode, Zap } from 'lucide-react';
+import { Disc, Eraser, ListChecks, ArrowRight, Pickaxe, Calculator, Brain, ShieldCheck, Palette, QrCode, Zap, Tv } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from 'sonner';
@@ -19,36 +19,63 @@ export default function Eco() {
     { to: "/word-guess", icon: <Brain className="text-pink-500" />, title: "Word Scramble", description: "Unscramble the letters to find the correct word.", isPremium: false },
     { to: "/captcha", icon: <ShieldCheck className="text-cyan-500" />, title: "Secure Captcha", description: "Solve simple captchas to earn quick points.", isPremium: true },
     { to: "/color-match", icon: <Palette className="text-pink-500" />, title: "Color Match", description: "Match the colors correctly to test your vision and earn points.", isPremium: true },
+    { to: "/watch-ads", icon: <Tv className="text-slate-900" />, title: "Watch & Earn", description: "Watch high-quality video ads to earn big rewards.", isPremium: false },
   ];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      <header>
+      <header className="px-2">
         <h1 className="text-2xl font-bold">Eco Activities</h1>
-        <p className="text-slate-500">Choose an activity to start earning points.</p>
+        <p className="text-slate-500 text-sm">Choose an activity to start earning points.</p>
       </header>
 
-      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" minimal hideLabel />
-      <AdUnit code={settings.ad_square_300x250} className="my-2" />
-
       <div className="grid gap-4">
-        {activities.map((activity, idx) => (
-          <React.Fragment key={activity.to}>
-            <ActivityLink 
-              to={activity.to} 
-              icon={activity.icon} 
-              title={activity.title} 
-              description={activity.description}
-              isPremium={activity.isPremium}
-            />
-            {(idx + 1) % 3 === 0 && (
-              <div className="my-2 flex justify-center flex-col items-center gap-2">
-                <AdUnit code={settings.ad_banner_468x60} className="min-h-[60px]" />
-                <AdUnit code={settings.ad_banner_320x50} className="min-h-[50px]" />
-              </div>
-            )}
-          </React.Fragment>
+        {activities.slice(0, 3).map((activity) => (
+          <ActivityLink 
+            key={activity.to}
+            to={activity.to} 
+            icon={activity.icon} 
+            title={activity.title} 
+            description={activity.description}
+            isPremium={activity.isPremium}
+          />
         ))}
+        
+        {/* Ad 1 */}
+        <div className="py-2">
+          <AdUnit code={settings.ad_banner_728x90 || settings.ad_square_300x250 || settings.ad_banner_320x50 || settings.clickadilla_banner} />
+        </div>
+
+        {activities.slice(3, 6).map((activity) => (
+          <ActivityLink 
+            key={activity.to}
+            to={activity.to} 
+            icon={activity.icon} 
+            title={activity.title} 
+            description={activity.description}
+            isPremium={activity.isPremium}
+          />
+        ))}
+
+        {/* Ad 2 */}
+        <div className="py-2">
+          <AdUnit code={settings.ad_banner_728x90 || settings.ad_square_300x250 || settings.clickadilla_banner} />
+        </div>
+
+        {activities.slice(6).map((activity) => (
+          <ActivityLink 
+            key={activity.to}
+            to={activity.to} 
+            icon={activity.icon} 
+            title={activity.title} 
+            description={activity.description}
+            isPremium={activity.isPremium}
+          />
+        ))}
+      </div>
+
+      <div className="flex justify-center mt-10">
+        <AdUnit code={settings.ad_native_bottom} className="w-full" />
       </div>
     </div>
   );

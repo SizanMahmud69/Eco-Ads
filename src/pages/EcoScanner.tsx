@@ -8,9 +8,12 @@ import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { Camera, QrCode, History, Trophy, AlertCircle, CheckCircle2, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { AdUnit } from '@/components/AdUnit';
+import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function EcoScanner() {
   const { user, updateUser } = useAuth();
+  const { settings } = useGameSettings();
   const [scanning, setScanning] = useState(false);
   const [reward, setReward] = useState<number | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
@@ -18,35 +21,22 @@ export default function EcoScanner() {
   const [permissionStatus, setPermissionStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
 
-  const checkPermission = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      stream.getTracks().forEach(track => track.stop());
-      setPermissionStatus('granted');
-      return true;
-    } catch (err: any) {
-      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        setPermissionStatus('denied');
-      }
-      return false;
-    }
-  };
-
   const startScanner = async () => {
     if (isProcessing) return;
+    
+    // Explicitly check for mediaDevices support
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast.error("Your browser does not support camera access.");
+      return;
+    }
+    
+    // Set a flag that we're about to request permission/start camera
+    // This helps InitRoute know that a reload might be coming from here
+    sessionStorage.setItem('scannerReloadPending', 'true');
     
     setIsInitializing(true);
     setScanning(true);
     
-    // Pre-check permission
-    const hasPermission = await checkPermission();
-    if (!hasPermission && permissionStatus === 'denied') {
-      setIsInitializing(false);
-      setScanning(false);
-      toast.error("Camera permission denied. Please enable it in browser settings.");
-      return;
-    }
-
     // Wait for the DOM element to be available
     setTimeout(async () => {
       try {
@@ -66,6 +56,8 @@ export default function EcoScanner() {
             onScanSuccess,
             onScanFailure
           );
+          // Only clear if successful
+          sessionStorage.removeItem('scannerReloadPending');
         } catch (firstErr) {
           console.warn("Failed to start with environment camera, trying user camera", firstErr);
           try {
@@ -75,15 +67,20 @@ export default function EcoScanner() {
               onScanSuccess,
               onScanFailure
             );
+            sessionStorage.removeItem('scannerReloadPending');
           } catch (secondErr) {
             console.error("Failed to start any camera", secondErr);
-            throw secondErr; // Re-throw to be caught by the outer catch block
+            sessionStorage.removeItem('scannerReloadPending');
+            toast.error("Could not start any camera. Please check your permissions.");
+            setScanning(false);
           }
         }
         setIsInitializing(false);
       } catch (err: any) {
         console.error("Camera start error:", err);
+        sessionStorage.removeItem('scannerReloadPending');
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setPermissionStatus('denied');
           toast.error("Camera permission denied. Please enable camera access in your browser settings.");
         } else {
           toast.error("Could not start camera. Please ensure permissions are granted.");
@@ -95,6 +92,7 @@ export default function EcoScanner() {
   };
 
   const stopScanner = async () => {
+    sessionStorage.removeItem('scannerReloadPending');
     if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
       try {
         await html5QrCodeRef.current.stop();
@@ -198,6 +196,8 @@ export default function EcoScanner() {
         <h1 className="text-3xl font-black text-slate-900">Eco Scanner</h1>
         <p className="text-slate-500 font-medium">Scan barcodes from bottles to earn points!</p>
       </header>
+
+      <AdUnit code={settings.ad_banner_728x90} className="my-4" />
 
       <Card className="border-none shadow-2xl shadow-slate-200/50 rounded-[2.5rem] overflow-hidden bg-white border-b-[6px] border-emerald-500/10">
         <CardContent className="p-8 space-y-6">
@@ -339,6 +339,7 @@ export default function EcoScanner() {
           </CardContent>
         </Card>
       </div>
+      <AdUnit code={settings.ad_native_bottom} className="mt-6" />
     </div>
   );
 }

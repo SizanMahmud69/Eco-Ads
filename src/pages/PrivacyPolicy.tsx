@@ -3,9 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useNavigate } from 'react-router-dom';
+import { AdUnit } from '@/components/AdUnit';
+import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function PrivacyPolicy() {
   const navigate = useNavigate();
+  const { settings } = useGameSettings();
 
   return (
     <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -18,6 +21,8 @@ export default function PrivacyPolicy() {
           <ArrowLeft size={18} />
           Back
         </Button>
+
+        <AdUnit code={settings.ad_banner_728x90} className="mb-8" />
 
         <Card className="border-none shadow-xl shadow-slate-200/50 overflow-hidden">
           <CardHeader className="bg-emerald-600 text-white p-8 text-center">
@@ -98,7 +103,8 @@ export default function PrivacyPolicy() {
               </p>
             </section>
 
-            <div className="mt-12 pt-8 border-t border-slate-100 text-center">
+            <div className="mt-12 pt-8 border-t border-slate-100 text-center space-y-8">
+              <AdUnit code={settings.ad_native_bottom} />
               <p className="text-slate-400 text-sm">© 2026 Eco Ads Team. All rights reserved.</p>
             </div>
           </CardContent>

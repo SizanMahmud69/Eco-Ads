@@ -82,9 +82,7 @@ export default function Upgrade() {
         <p className="text-slate-500">Unlock your full earning potential with Eco Ads Premium.</p>
       </header>
 
-      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" minimal hideLabel />
-      <AdUnit code={settings.ad_banner_468x60} className="my-2" />
-      <AdUnit code={settings.ad_square_300x250} className="my-2" />
+      <AdUnit code={settings.ad_banner_728x90} className="my-6" minimal hideLabel />
 
       {loading ? (
         <div className="flex justify-center py-20">
@@ -130,16 +128,14 @@ export default function Upgrade() {
                   </Button>
                 </CardContent>
               </Card>
-              {(idx + 1) % 2 === 0 && (
-                <div className="col-span-1 md:col-span-2 lg:col-span-3 flex justify-center my-4 flex-col items-center gap-2">
-                  <AdUnit code={settings.ad_banner_728x90} className="min-h-[90px]" />
-                  <AdUnit code={settings.ad_native_bottom} className="min-h-[100px]" />
-                </div>
-              )}
             </React.Fragment>
           ))}
         </div>
       )}
+
+      <div className="flex justify-center mt-10">
+        <AdUnit code={settings.ad_native_bottom} className="w-full" />
+      </div>
 
       {/* Payment Modal */}
       {selectedPlan && (

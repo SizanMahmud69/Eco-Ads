@@ -55,7 +55,11 @@ export default function Spin() {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setHistory(data);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'history');
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'history');
+      } catch (e) {
+        console.error(e);
+      }
     });
 
     return () => unsubscribe();
@@ -134,12 +138,9 @@ export default function Spin() {
       </header>
 
       <AdUnit code={settings.ad_banner_728x90} minimal hideLabel />
-      <AdUnit code={settings.ad_square_300x250} className="my-2" />
 
       <div className="flex justify-center py-4 flex-col items-center gap-4">
-        <AdUnit code={settings.ad_banner_468x60} />
         <SpinWheel onSpin={handleSpinResult} disabled={!canSpin || loading} segments={segments.length > 0 ? segments : undefined} />
-        <AdUnit code={settings.ad_banner_320x50} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
@@ -208,17 +209,6 @@ export default function Spin() {
                           +{item.points}
                         </TableCell>
                       </TableRow>
-                      {(idx + 1) % 2 === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={2} className="p-2">
-                            <div className="flex justify-center flex-col items-center gap-2">
-                              {/* Using a secondary ad for variation */}
-                              <AdUnit code={settings.ad_banner_320x50} className="min-h-[50px]" />
-                              <AdUnit code={settings.ad_banner_468x60} className="min-h-[60px]" />
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )}
                     </React.Fragment>
                   ))
                 )}

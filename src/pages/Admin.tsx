@@ -34,12 +34,35 @@ import {
   Edit,
   Award,
   Bell,
-  Info
+  Info,
+  Eye,
+  MoreVertical,
+  Snowflake,
+  User,
+  UserCheck,
+  UserX,
+  Mail,
+  Heart
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, query, orderBy, onSnapshot, doc, updateDoc, getDocs, addDoc, deleteDoc, limit, where, increment, setDoc, serverTimestamp, getDoc, writeBatch } from 'firebase/firestore';
+
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function Admin() {
   const { isAdmin, logout } = useAuth();
@@ -62,6 +85,8 @@ export default function Admin() {
     captcha_points: 5,
     color_match_points: 5,
     number_memory_points: 10,
+    watch_ads_points: 20,
+    watch_ads_cooldown: 5,
     referral_bonus: 500,
     points_per_bdt: 1000,
     min_withdrawal: 5000,
@@ -78,6 +103,10 @@ export default function Admin() {
     ad_square_300x250: '',
     ad_native_top: '',
     ad_native_bottom: '',
+    clickadilla_banner: '',
+    clickadilla_native: '',
+    clickadilla_popunder: '',
+    clickadilla_instream: '',
     registrations_enabled: true,
     bkash_number: '01700000000',
     nagad_number: '01700000000',
@@ -101,6 +130,48 @@ export default function Admin() {
     };
   }, []);
 
+  // Aggressive cleanup for any leftover ad elements when entering admin
+  useEffect(() => {
+    const cleanupAds = () => {
+      const selectors = [
+        '[id^="at-social-bar"]', 
+        '.at-social-bar', 
+        '[class*="social-bar"]',
+        '[id^="propeller"]',
+        '[id^="clickadilla"]',
+        '[class*="popunder"]',
+        '.native-ad-unit',
+        'ins.adsbygoogle',
+        '[id^="fixed-ad-container"]'
+      ];
+      selectors.forEach(selector => {
+        document.querySelectorAll(selector).forEach(el => (el as HTMLElement).remove());
+      });
+      
+      // Also check for fixed position elements created by ads
+      const allDivs = document.querySelectorAll('body > div');
+      allDivs.forEach(div => {
+        const style = window.getComputedStyle(div);
+        if ((style.position === 'fixed' || style.position === 'absolute') && 
+            (style.zIndex === '9999' || style.zIndex === '10000' || style.zIndex === '2147483647')) {
+          // Double check if it looks like an ad container
+          if (div.querySelector('iframe, a, img, script')) {
+            div.remove();
+          }
+        }
+      });
+    };
+    
+    cleanupAds();
+    const interval = setInterval(cleanupAds, 1000); 
+    const timeout = setTimeout(() => clearInterval(interval), 15000);
+    
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, []);
+
   const [stats, setStats] = useState({
     totalUsers: 0,
     totalPoints: 0,
@@ -112,8 +183,9 @@ export default function Admin() {
   // Form states for adding tasks/plans
   const [newTask, setNewTask] = useState({ title: '', description: '', points_reward: 0, type: 'daily', link: '', timer: 30 });
   const [newPlan, setNewPlan] = useState({ name: '', price: 0, duration_days: 30, features: '', multiplier: 1 });
-  const [broadcast, setBroadcast] = useState({ title: '', message: '', type: 'info' as any });
+  const [broadcast, setBroadcast] = useState({ title: '', message: '', type: 'info' as any, link: '', targetType: 'all', targetUids: [] as string[] });
   const [broadcasting, setBroadcasting] = useState(false);
+  const [userSearchTerm, setUserSearchTerm] = useState('');
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -124,7 +196,13 @@ export default function Admin() {
       const totalPoints = userData.reduce((acc: number, u: any) => acc + (u.points || 0), 0);
       const premiumCount = userData.filter((u: any) => u.is_premium).length;
       setStats(prev => ({ ...prev, totalUsers: userData.length, totalPoints, premiumUsers: premiumCount }));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users'));
+    }, (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'users');
+      } catch (e) {
+        console.error(e);
+      }
+    });
 
     const unsubUsersPrivate = onSnapshot(collection(db, 'users_private'), (snapshot) => {
       const privateData: Record<string, string> = {};
@@ -132,7 +210,13 @@ export default function Admin() {
         privateData[doc.id] = doc.data().email;
       });
       setUsersPrivate(privateData);
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'users_private'));
+    }, (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'users_private');
+      } catch (e) {
+        console.error(e);
+      }
+    });
 
     const unsubWithdrawals = onSnapshot(query(collection(db, 'withdrawals'), orderBy('created_at', 'desc')), (snapshot) => {
       const withdrawalData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -140,7 +224,13 @@ export default function Admin() {
       const pending = withdrawalData.filter((w: any) => w.status === 'pending').length;
       const paid = withdrawalData.filter((w: any) => w.status === 'approved').reduce((acc: number, w: any) => acc + (w.amountBDT || 0), 0);
       setStats(prev => ({ ...prev, pendingWithdrawals: pending, totalPaid: paid }));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, 'withdrawals'));
+    }, (error) => {
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'withdrawals');
+      } catch (e) {
+        console.error(e);
+      }
+    });
 
     const unsubTasks = onSnapshot(collection(db, 'tasks'), (snapshot) => {
       setTasks(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
@@ -242,6 +332,42 @@ export default function Admin() {
     }
   };
 
+  const handleToggleFreeze = async (userId: string, currentStatus: boolean) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        is_frozen: !currentStatus
+      });
+      toast.success(`User ${!currentStatus ? 'Frozen' : 'Unfrozen'} successfully`);
+    } catch (error) {
+      toast.error('Failed to update freeze status');
+    }
+  };
+
+  const handleToggleBan = async (userId: string, currentStatus: boolean) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        is_banned: !currentStatus
+      });
+      toast.success(`User ${!currentStatus ? 'Banned' : 'Unbanned'} successfully`);
+    } catch (error) {
+      toast.error('Failed to update ban status');
+    }
+  };
+
+  const handleResetHealth = async (userId: string) => {
+    try {
+      const userRef = doc(db, 'users', userId);
+      await updateDoc(userRef, {
+        profile_health: 100
+      });
+      toast.success('Profile health reset to 100%');
+    } catch (error) {
+      toast.error('Failed to reset health');
+    }
+  };
+
   const handleApprovePremium = async (request: any) => {
     try {
       const userRef = doc(db, 'users', request.userId);
@@ -261,6 +387,7 @@ export default function Admin() {
         title: 'Premium Upgrade Approved! 💎',
         message: `Congratulations! Your ${request.planName} plan is now active. Enjoy your ${request.multiplier}x points!`,
         type: 'success',
+        link: '/profile',
         read: false,
         created_at: serverTimestamp()
       });
@@ -284,6 +411,7 @@ export default function Admin() {
           title: 'Premium Request Rejected',
           message: 'Your premium upgrade request was rejected. Please contact support if you think this is a mistake.',
           type: 'alert',
+          link: '/upgrade',
           read: false,
           created_at: serverTimestamp()
         });
@@ -302,28 +430,53 @@ export default function Admin() {
       return;
     }
 
-    if (!confirm(`Are you sure you want to send this notification to ALL ${users.length} users?`)) return;
+    const isSpecific = broadcast.targetType === 'specific';
+    if (isSpecific && broadcast.targetUids.length === 0) {
+      toast.error('Please select at least one target user');
+      return;
+    }
+
+    const targetUsers = isSpecific 
+      ? users.filter(u => broadcast.targetUids.includes(u.uid || u.id))
+      : users;
+
+    if (targetUsers.length === 0) {
+      toast.error(isSpecific ? "Target users not found" : "No users to broadcast to");
+      return;
+    }
+
+    if (!confirm(`Are you sure you want to send this notification to ${isSpecific ? `${targetUsers.length} selected user(s)` : `ALL ${users.length} users`}?`)) return;
 
     setBroadcasting(true);
     try {
-      const batch = writeBatch(db);
-      users.forEach(u => {
-        const notifRef = doc(collection(db, 'notifications'));
-        batch.set(notifRef, {
-          userId: u.uid,
-          title: broadcast.title,
-          message: broadcast.message,
-          type: broadcast.type,
-          read: false,
-          created_at: serverTimestamp()
+      // Firestore batches are limited to 500 operations
+      const CHUNK_SIZE = 450; 
+      for (let i = 0; i < targetUsers.length; i += CHUNK_SIZE) {
+        const chunk = targetUsers.slice(i, i + CHUNK_SIZE);
+        const batch = writeBatch(db);
+        
+        chunk.forEach(u => {
+          const notifRef = doc(collection(db, 'notifications'));
+          batch.set(notifRef, {
+            userId: u.uid || u.id,
+            title: broadcast.title,
+            message: broadcast.message,
+            type: broadcast.type,
+            link: broadcast.link || null,
+            read: false,
+            created_at: serverTimestamp()
+          });
         });
-      });
-      await batch.commit();
-      setBroadcast({ title: '', message: '', type: 'info' });
-      toast.success(`Broadcast sent to ${users.length} users!`);
-    } catch (error) {
+        
+        await batch.commit();
+      }
+
+      setBroadcast({ ...broadcast, title: '', message: '', link: '', targetUids: [] });
+      setUserSearchTerm('');
+      toast.success(`Broadcast sent to ${targetUsers.length} user(s)!`);
+    } catch (error: any) {
       console.error("Broadcast error:", error);
-      toast.error('Failed to send broadcast');
+      toast.error(`Broadcast failed: ${error.message || 'Unknown error'}`);
     } finally {
       setBroadcasting(false);
     }
@@ -353,6 +506,7 @@ export default function Admin() {
           title: 'Referral Bonus Received! 🎁',
           message: `You earned ${reward.bonusAmount} points as ${reward.referredUsername} reached 1000 points!`,
           type: 'success',
+          link: '/refer',
           read: false,
           created_at: serverTimestamp()
         });
@@ -378,6 +532,7 @@ export default function Admin() {
           title: 'Referral Reward Rejected',
           message: 'One of your referral rewards was rejected after manual verification.',
           type: 'alert',
+          link: '/refer',
           read: false,
           created_at: serverTimestamp()
         });
@@ -404,6 +559,7 @@ export default function Admin() {
             ? `Your withdrawal of ৳${wData.amountBDT} has been processed successfully.`
             : `Your withdrawal request for ৳${wData.amountBDT} was rejected. Points have been refunded.`,
           type: status === 'approved' ? 'success' : 'alert',
+          link: '/wallet',
           read: false,
           created_at: serverTimestamp()
         });
@@ -652,7 +808,12 @@ export default function Admin() {
                                 {u.is_premium && <Zap size={12} className="text-amber-500 fill-amber-500" />}
                               </div>
                             </TableCell>
-                            <TableCell className="text-slate-500 text-xs">{u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}</TableCell>
+                            <TableCell className="text-slate-500 text-xs">
+                              {(() => {
+                                const date = u.created_at?.toDate?.() || (u.created_at ? new Date(u.created_at) : null);
+                                return date && !isNaN(date.getTime()) ? date.toLocaleDateString() : 'N/A';
+                              })()}
+                            </TableCell>
                             <TableCell className="text-right flex items-center justify-end gap-2">
                               <Badge className={u.is_premium ? 'bg-amber-500/10 text-amber-500' : 'bg-slate-700 text-slate-400'}>
                                 {u.is_premium ? 'Premium' : 'Free'}
@@ -672,64 +833,83 @@ export default function Admin() {
 
           {activeTab === 'withdrawals' && (
             <div className="animate-in slide-in-from-bottom-4 duration-500">
-              <Card className="bg-slate-800 border-slate-700 text-slate-100">
-                <CardHeader>
-                  <CardTitle>Withdrawal Requests</CardTitle>
-                  <CardDescription className="text-slate-400">Review and process user payout requests.</CardDescription>
+              <Card className="bg-slate-800/50 border-slate-700/50 backdrop-blur-xl shadow-2xl text-slate-100 overflow-hidden">
+                <CardHeader className="p-6 pb-2">
+                  <CardTitle className="text-2xl font-black tracking-tight text-white">Withdrawal Requests</CardTitle>
+                  <CardDescription className="text-slate-400">Review and process user payout requests with full transparency.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <Table>
-                    <TableHeader className="bg-slate-900/50">
-                      <TableRow className="border-slate-700">
-                        <TableHead className="text-slate-400">User Details</TableHead>
-                        <TableHead className="text-slate-400">Amount (BDT)</TableHead>
-                        <TableHead className="text-slate-400">Method</TableHead>
-                        <TableHead className="text-slate-400">Account</TableHead>
-                        <TableHead className="text-slate-400">Status</TableHead>
-                        <TableHead className="text-right text-slate-400">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {withdrawals.map((w) => (
-                        <TableRow key={w.id} className="border-slate-700 hover:bg-slate-700/30">
-                          <TableCell>
-                            <div className="flex flex-col">
-                              <span className="font-medium text-slate-200">{w.username}</span>
-                              <span className="text-xs text-slate-500">{w.email}</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex flex-col">
-                              <span className="font-bold text-indigo-400">৳ {w.amountBDT}</span>
-                              <span className="text-xs text-slate-500">{w.amountPoints} pts</span>
-                            </div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge className="bg-slate-700 text-slate-300 border-slate-600">{w.method}</Badge>
-                          </TableCell>
-                          <TableCell className="font-mono text-xs text-slate-300">{w.accountNumber}</TableCell>
-                          <TableCell>
-                            <Badge variant={w.status === 'approved' ? 'default' : w.status === 'pending' ? 'secondary' : 'destructive'} 
-                                   className={w.status === 'pending' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : ''}>
-                              {w.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {w.status === 'pending' && (
-                              <div className="flex justify-end gap-2">
-                                <Button size="icon" variant="outline" className="h-8 w-8 bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500 hover:text-white" onClick={() => handleUpdateStatus(w.id, 'approved')}>
-                                  <Check size={16} />
-                                </Button>
-                                <Button size="icon" variant="outline" className="h-8 w-8 bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white" onClick={() => handleUpdateStatus(w.id, 'rejected')}>
-                                  <X size={16} />
-                                </Button>
-                              </div>
-                            )}
-                          </TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-900/40">
+                        <TableRow className="border-slate-700/50">
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">User Details</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Amount (BDT)</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Method</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Account</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Status</TableHead>
+                          <TableHead className="text-right text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {withdrawals.map((w) => (
+                          <TableRow key={w.id} className="border-slate-700/50 hover:bg-slate-700/20 transition-colors group">
+                            <TableCell className="p-6">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-bold border border-indigo-500/20">
+                                  {w.username?.[0]?.toUpperCase() || 'U'}
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-slate-200 group-hover:text-white transition-colors">{w.username}</span>
+                                  <span className="text-xs text-slate-500">{w.email}</span>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <div className="flex flex-col">
+                                <span className="font-black text-lg text-emerald-400">৳{w.amountBDT}</span>
+                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{w.amountPoints.toLocaleString()} PTS</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <Badge className="bg-slate-900/50 text-slate-300 border-slate-700 px-3 py-1 font-bold text-[10px] uppercase tracking-wider">
+                                {w.method}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <div className="bg-slate-900/30 px-3 py-1.5 rounded-lg border border-slate-700/50 w-fit">
+                                <span className="font-mono text-sm text-indigo-300">{w.accountNumber}</span>
+                              </div>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <Badge 
+                                variant={w.status === 'approved' ? 'default' : w.status === 'pending' ? 'secondary' : 'destructive'} 
+                                className={`px-3 py-1 font-black text-[10px] uppercase tracking-tighter ${
+                                  w.status === 'pending' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 
+                                  w.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                  'bg-red-500/10 text-red-400 border-red-500/20'
+                                }`}
+                              >
+                                {w.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="p-6 text-right">
+                              {w.status === 'pending' && (
+                                <div className="flex justify-end gap-3 translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                                  <Button size="icon" variant="outline" className="h-9 w-9 bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500 hover:text-white rounded-xl shadow-lg shadow-emerald-500/20" onClick={() => handleUpdateStatus(w.id, 'approved')}>
+                                    <Check size={18} />
+                                  </Button>
+                                  <Button size="icon" variant="outline" className="h-9 w-9 bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500 hover:text-white rounded-xl shadow-lg shadow-red-500/20" onClick={() => handleUpdateStatus(w.id, 'rejected')}>
+                                    <X size={18} />
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -737,59 +917,115 @@ export default function Admin() {
 
           {activeTab === 'users' && (
             <div className="animate-in slide-in-from-bottom-4 duration-500">
-              <Card className="bg-slate-800 border-slate-700 text-slate-100">
-                <CardHeader>
-                  <CardTitle>Registered Users</CardTitle>
-                  <CardDescription className="text-slate-400">Full list of users and their activity.</CardDescription>
+              <Card className="bg-slate-800/50 border-slate-700/50 backdrop-blur-xl shadow-2xl text-slate-100 overflow-hidden">
+                <CardHeader className="p-6 pb-2">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="text-2xl font-black tracking-tight text-white">Registered Users</CardTitle>
+                      <CardDescription className="text-slate-400">Total management of your community database.</CardDescription>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="bg-slate-900/50 px-4 py-2 rounded-xl border border-slate-700 flex items-center gap-2">
+                        <Users size={16} className="text-indigo-400" />
+                        <span className="text-xs font-black uppercase tracking-widest">{users.length} Users</span>
+                      </div>
+                    </div>
+                  </div>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <Table>
-                    <TableHeader className="bg-slate-900/50">
-                      <TableRow className="border-slate-700">
-                        <TableHead className="text-slate-400">Username</TableHead>
-                        <TableHead className="text-slate-400">Email</TableHead>
-                        <TableHead className="text-slate-400">Balance</TableHead>
-                        <TableHead className="text-slate-400">Referral Code</TableHead>
-                        <TableHead className="text-slate-400">Status</TableHead>
-                        <TableHead className="text-slate-400">Joined</TableHead>
-                        <TableHead className="text-right text-slate-400">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {users.map((u) => (
-                        <TableRow key={u.id} className="border-slate-700 hover:bg-slate-700/30">
-                          <TableCell className="font-medium text-slate-200">{u.username}</TableCell>
-                          <TableCell className="text-slate-400">{usersPrivate[u.id] || u.email || 'N/A'}</TableCell>
-                          <TableCell className="font-bold text-indigo-400">{u.points || 0} pts</TableCell>
-                          <TableCell className="font-mono text-xs text-slate-500">{u.referral_code}</TableCell>
-                          <TableCell>
-                            <Badge className={u.is_premium ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-slate-700 text-slate-400 border-slate-600'}>
-                              {u.is_premium ? 'Premium' : 'Free'}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-xs text-slate-500">
-                            {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'N/A'}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button 
-                                size="icon" 
-                                variant="ghost" 
-                                className={`h-8 w-8 ${u.is_premium ? 'text-amber-500 hover:text-amber-400' : 'text-slate-500 hover:text-emerald-400'}`}
-                                onClick={() => handleTogglePremium(u.id, !!u.is_premium)}
-                                title={u.is_premium ? "Remove Premium" : "Make Premium"}
-                              >
-                                <Zap size={16} className={u.is_premium ? 'fill-amber-500' : ''} />
-                              </Button>
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-slate-500 hover:text-red-400">
-                                <Ban size={16} />
-                              </Button>
-                            </div>
-                          </TableCell>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-900/40">
+                        <TableRow className="border-slate-700/50">
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Username</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Email</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Balance</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Referral Code</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Status</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Joined</TableHead>
+                          <TableHead className="text-right text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {users.map((u) => (
+                          <TableRow key={u.id} className="border-slate-700/50 hover:bg-slate-700/20 transition-colors group">
+                            <TableCell className="p-6 font-bold text-slate-200 group-hover:text-white">{u.username}</TableCell>
+                            <TableCell className="p-6 text-slate-400 text-sm">{usersPrivate[u.id] || u.email || 'N/A'}</TableCell>
+                            <TableCell className="p-6">
+                              <span className="font-black text-indigo-400 bg-indigo-500/5 px-3 py-1.5 rounded-lg border border-indigo-500/10">
+                                {u.points?.toLocaleString() || 0} PTS
+                              </span>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <span className="font-mono text-xs text-slate-500 bg-slate-900/50 px-2.5 py-1 rounded-md border border-slate-700">
+                                {u.referral_code}
+                              </span>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <Badge className={`px-3 py-1 font-black text-[10px] uppercase tracking-tighter ${
+                                u.is_banned ? 'bg-red-500/20 text-red-500 border-red-500/30' : 
+                                u.is_frozen ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 
+                                u.is_premium ? 'bg-amber-500/20 text-amber-500 border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]' : 
+                                'bg-slate-700/50 text-slate-400 border-slate-600'
+                              }`}>
+                                {u.is_banned ? 'Banned' : u.is_frozen ? 'Frozen' : u.is_premium ? 'Premium' : 'Free'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="p-6 text-xs font-bold text-slate-500 uppercase tracking-tighter">
+                              {(() => {
+                                const date = u.created_at?.toDate?.() || (u.created_at ? new Date(u.created_at) : null);
+                                return date && !isNaN(date.getTime()) ? date.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'N/A';
+                              })()}
+                            </TableCell>
+                            <TableCell className="p-6 text-right">
+                              <DropdownMenu>
+                                <DropdownMenuTrigger 
+                                  render={
+                                    <Button variant="ghost" size="icon" className="h-9 w-9 text-slate-400 hover:text-white hover:bg-slate-700/50 rounded-xl transition-all">
+                                      <MoreVertical size={18} />
+                                    </Button>
+                                  }
+                                />
+                                <DropdownMenuContent align="end" className="bg-slate-900/95 backdrop-blur-xl border-slate-700/50 text-slate-200 w-56 p-2 rounded-2xl shadow-2xl">
+                                  <div className="px-3 pb-2 pt-2 text-[10px] font-black uppercase tracking-widest text-slate-500">User Management</div>
+                                  <DropdownMenuSeparator className="bg-slate-800" />
+                                  
+                                  <DropdownMenuItem onClick={() => navigate('/admin/users/' + u.id)} className="hover:bg-indigo-500/10 hover:text-indigo-400 cursor-pointer rounded-xl py-3 px-4 transition-colors">
+                                    <Info size={16} className="mr-3" /> <span className="font-bold text-sm">Full Profile</span>
+                                  </DropdownMenuItem>
+                                  
+                                  <DropdownMenuItem onClick={() => handleTogglePremium(u.id, !!u.is_premium)} className="hover:bg-amber-500/10 hover:text-amber-500 cursor-pointer rounded-xl py-3 px-4 transition-colors">
+                                    <Zap size={16} className={`mr-3 ${u.is_premium ? 'fill-amber-500' : ''}`} /> 
+                                    <span className="font-bold text-sm">{u.is_premium ? 'Downgrade to Free' : 'Grant Premium'}</span>
+                                  </DropdownMenuItem>
+  
+                                  <DropdownMenuItem onClick={() => handleToggleFreeze(u.id, !!u.is_frozen)} className="hover:bg-blue-500/10 hover:text-blue-400 cursor-pointer rounded-xl py-3 px-4 transition-colors">
+                                    <Snowflake size={16} className={`mr-3 ${u.is_frozen ? 'animate-pulse' : ''}`} /> 
+                                    <span className="font-bold text-sm">{u.is_frozen ? 'Unfreeze Account' : 'Freeze Account'}</span>
+                                  </DropdownMenuItem>
+
+                                  <DropdownMenuItem onClick={() => handleResetHealth(u.id)} className="hover:bg-emerald-500/10 hover:text-emerald-400 cursor-pointer rounded-xl py-3 px-4 transition-colors">
+                                    <Heart size={16} className="mr-3" /> 
+                                    <span className="font-bold text-sm">Reset Health</span>
+                                  </DropdownMenuItem>
+  
+                                  <DropdownMenuSeparator className="bg-slate-800" />
+  
+                                  <DropdownMenuItem 
+                                    onClick={() => handleToggleBan(u.id, !!u.is_banned)} 
+                                    className={`cursor-pointer rounded-xl py-3 px-4 transition-colors ${u.is_banned ? 'hover:bg-emerald-500/10 hover:text-emerald-400' : 'hover:bg-red-500/10 hover:text-red-400'}`}
+                                  >
+                                    {u.is_banned ? <UserCheck size={16} className="mr-3" /> : <UserX size={16} className="mr-3" />}
+                                    <span className="font-bold text-sm">{u.is_banned ? 'Restore User' : 'Ban User Permanently'}</span>
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -861,7 +1097,7 @@ export default function Admin() {
                           <TableCell><Badge variant="outline">{task.type}</Badge></TableCell>
                           <TableCell className="text-slate-400">{task.timer || 0}s</TableCell>
                           <TableCell className="text-right">
-                            <Button size="icon" variant="ghost" className="text-red-400" onClick={() => handleDeleteTask(task.id)}>
+                            <Button size="icon" variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => handleDeleteTask(task.id)}>
                               <Trash2 size={16} />
                             </Button>
                           </TableCell>
@@ -930,7 +1166,7 @@ export default function Admin() {
                           <TableCell>{plan.duration_days} Days</TableCell>
                           <TableCell>{plan.multiplier}x</TableCell>
                           <TableCell className="text-right">
-                            <Button size="icon" variant="ghost" className="text-red-400" onClick={() => handleDeletePlan(plan.id)}>
+                            <Button size="icon" variant="ghost" className="text-red-400 hover:text-red-300 hover:bg-red-500/10" onClick={() => handleDeletePlan(plan.id)}>
                               <Trash2 size={16} />
                             </Button>
                           </TableCell>
@@ -984,69 +1220,99 @@ export default function Admin() {
 
           {activeTab === 'premium' && (
             <div className="animate-in slide-in-from-bottom-4 duration-500">
-              <Card className="bg-slate-800 border-slate-700 text-slate-100">
-                <CardHeader>
-                  <CardTitle>Premium Upgrade Requests</CardTitle>
+              <Card className="bg-slate-800/50 border-slate-700/50 backdrop-blur-xl shadow-2xl text-slate-100 overflow-hidden">
+                <CardHeader className="p-6 pb-2">
+                  <CardTitle className="text-2xl font-black tracking-tight text-white">Premium Upgrade Requests</CardTitle>
                   <CardDescription className="text-slate-400">Review and approve user payment for premium plans.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-slate-700">
-                        <TableHead>User</TableHead>
-                        <TableHead>Plan</TableHead>
-                        <TableHead>Payment</TableHead>
-                        <TableHead>Details</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {premiumRequests.map(request => (
-                        <TableRow key={request.id} className="border-slate-700">
-                          <TableCell>
-                            <div className="font-medium">{request.username}</div>
-                            <div className="text-xs text-slate-500">{request.email}</div>
-                          </TableCell>
-                          <TableCell>
-                            <div className="font-bold text-emerald-400">{request.planName}</div>
-                            <div className="text-xs text-slate-400">৳{request.amount}</div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline" className="border-slate-600 text-slate-300">
-                              {request.method}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <div className="text-xs"><span className="text-slate-500">From:</span> {request.senderNumber}</div>
-                            <div className="text-xs font-mono text-indigo-400"><span className="text-slate-500">Trx:</span> {request.transactionId}</div>
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={request.status === 'approved' ? 'default' : request.status === 'pending' ? 'secondary' : 'destructive'}>
-                              {request.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {request.status === 'pending' && (
-                              <div className="flex justify-end gap-2">
-                                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => handleApprovePremium(request)}>
-                                  <Check size={14} className="mr-1" /> Approve
-                                </Button>
-                                <Button size="sm" variant="destructive" onClick={() => handleRejectPremium(request.id)}>
-                                  <X size={14} className="mr-1" /> Reject
-                                </Button>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-900/40">
+                        <TableRow className="border-slate-700/50">
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">User</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Plan</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Payment</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Details</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Status</TableHead>
+                          <TableHead className="text-right text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {premiumRequests.map(request => (
+                          <TableRow key={request.id} className="border-slate-700/50 hover:bg-slate-700/20 transition-colors group">
+                            <TableCell className="p-6">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500 border border-amber-500/20">
+                                  <User size={20} />
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-slate-200">{request.username}</span>
+                                  <span className="text-xs text-slate-500">{request.email}</span>
+                                </div>
                               </div>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {premiumRequests.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center py-10 text-slate-500">No premium requests found.</TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <div className="flex flex-col">
+                                <div className="font-black text-amber-500 flex items-center gap-1 uppercase tracking-tight">
+                                  <Zap size={14} className="fill-amber-500" />
+                                  {request.planName}
+                                </div>
+                                <div className="text-xs font-bold text-slate-400">৳{request.amount}</div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <Badge className="bg-indigo-500/10 text-indigo-400 border-indigo-500/20 px-3 py-1 font-bold text-[10px] uppercase tracking-wider">
+                                {request.method}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <div className="space-y-1 bg-slate-900/30 p-2 rounded-lg border border-slate-700/50 w-fit">
+                                <div className="text-[10px] flex items-center gap-1.5"><span className="text-slate-500 uppercase font-black tracking-tighter">Sender:</span> <span className="text-slate-200 font-bold">{request.senderNumber}</span></div>
+                                <div className="text-[10px] flex items-center gap-1.5"><span className="text-slate-500 uppercase font-black tracking-tighter">Trx ID:</span> <span className="text-indigo-400 font-mono font-bold tracking-widest uppercase">{request.transactionId}</span></div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <Badge 
+                                variant={request.status === 'approved' ? 'default' : request.status === 'pending' ? 'secondary' : 'destructive'}
+                                className={`px-3 py-1 font-black text-[10px] uppercase tracking-tighter ${
+                                  request.status === 'pending' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 
+                                  request.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                  'bg-red-500/10 text-red-400 border-red-500/20'
+                                }`}
+                              >
+                                {request.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="p-6 text-right">
+                              {request.status === 'pending' && (
+                                <div className="flex justify-end gap-3 translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 font-black uppercase text-[10px] tracking-widest rounded-xl px-4 py-2 shadow-lg shadow-emerald-500/20 transition-all active:scale-95" onClick={() => handleApprovePremium(request)}>
+                                    <Check size={14} className="mr-1.5" /> Approve
+                                  </Button>
+                                  <Button size="sm" variant="destructive" className="font-black uppercase text-[10px] tracking-widest rounded-xl px-4 py-2 shadow-lg shadow-red-500/20 transition-all active:scale-95" onClick={() => handleRejectPremium(request.id)}>
+                                    <X size={14} className="mr-1.5" /> Reject
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {premiumRequests.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-20">
+                              <div className="flex flex-col items-center gap-3">
+                                <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center text-slate-700">
+                                  <Zap size={32} />
+                                </div>
+                                <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No pending requests at the moment</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -1054,61 +1320,94 @@ export default function Admin() {
 
           {activeTab === 'referrals' && (
             <div className="animate-in slide-in-from-bottom-4 duration-500">
-              <Card className="bg-slate-800 border-slate-700 text-slate-100">
-                <CardHeader>
-                  <CardTitle>Referral Reward Claims</CardTitle>
-                  <CardDescription className="text-slate-400">Review and approve referral bonuses for users.</CardDescription>
+              <Card className="bg-slate-800/50 border-slate-700/50 backdrop-blur-xl shadow-2xl text-slate-100 overflow-hidden">
+                <CardHeader className="p-6 pb-2">
+                  <CardTitle className="text-2xl font-black tracking-tight text-white">Referral Reward Claims</CardTitle>
+                  <CardDescription className="text-slate-400">Review and approve referral bonuses for verified users.</CardDescription>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="border-slate-700">
-                        <TableHead>Referrer ID</TableHead>
-                        <TableHead>Referred User</TableHead>
-                        <TableHead>Bonus</TableHead>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {referralRewards.map(reward => (
-                        <TableRow key={reward.id} className="border-slate-700">
-                          <TableCell className="font-mono text-xs text-slate-400">{reward.referrerId}</TableCell>
-                          <TableCell>
-                            <div className="font-medium">{reward.referredUsername}</div>
-                            <div className="text-xs text-slate-500">{reward.referredId}</div>
-                          </TableCell>
-                          <TableCell className="font-bold text-emerald-400">{reward.bonusAmount} pts</TableCell>
-                          <TableCell className="text-xs text-slate-500">
-                            {new Date(reward.created_at).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant={reward.status === 'approved' ? 'default' : reward.status === 'pending' ? 'secondary' : 'destructive'}>
-                              {reward.status}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {reward.status === 'pending' && (
-                              <div className="flex justify-end gap-2">
-                                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" onClick={() => handleApproveReferral(reward)}>
-                                  <Check size={14} className="mr-1" /> Approve
-                                </Button>
-                                <Button size="sm" variant="destructive" onClick={() => handleRejectReferral(reward.id)}>
-                                  <X size={14} className="mr-1" /> Reject
-                                </Button>
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader className="bg-slate-900/40">
+                        <TableRow className="border-slate-700/50">
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Referrer ID</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Referred User</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Bonus</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Date</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Status</TableHead>
+                          <TableHead className="text-right text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {referralRewards.map(reward => (
+                          <TableRow key={reward.id} className="border-slate-700/50 hover:bg-slate-700/20 transition-colors group">
+                            <TableCell className="p-6">
+                              <div className="bg-slate-900/50 px-3 py-1.5 rounded-lg border border-slate-700/50 w-fit">
+                                <span className="font-mono text-[10px] text-slate-400 tracking-tighter">{reward.referrerId}</span>
                               </div>
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      {referralRewards.length === 0 && (
-                        <TableRow>
-                          <TableCell colSpan={6} className="text-center py-10 text-slate-500">No referral rewards found.</TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-bold border border-indigo-500/20">
+                                  <Users size={16} />
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-slate-200">{reward.referredUsername}</span>
+                                  <span className="text-[10px] text-slate-500 font-mono">{reward.referredId}</span>
+                                </div>
+                              </div>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <span className="font-black text-emerald-400 bg-emerald-500/5 px-3 py-1 rounded-lg border border-emerald-500/10">
+                                +{reward.bonusAmount?.toLocaleString()} PTS
+                              </span>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <span className="text-xs font-bold text-slate-500 uppercase tracking-tighter">
+                                {new Date(reward.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                              </span>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <Badge 
+                                variant={reward.status === 'approved' ? 'default' : reward.status === 'pending' ? 'secondary' : 'destructive'}
+                                className={`px-3 py-1 font-black text-[10px] uppercase tracking-tighter ${
+                                  reward.status === 'pending' ? 'bg-amber-500/10 text-amber-500 border-amber-500/20' : 
+                                  reward.status === 'approved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                                  'bg-red-500/10 text-red-400 border-red-500/20'
+                                }`}
+                              >
+                                {reward.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="p-6 text-right">
+                              {reward.status === 'pending' && (
+                                <div className="flex justify-end gap-3 translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                                  <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 font-black uppercase text-[10px] tracking-widest rounded-xl px-4 py-2 shadow-lg shadow-emerald-500/20 transition-all active:scale-95" onClick={() => handleApproveReferral(reward)}>
+                                    <Check size={14} className="mr-1.5" /> Approve
+                                  </Button>
+                                  <Button size="sm" variant="destructive" className="font-black uppercase text-[10px] tracking-widest rounded-xl px-4 py-2 shadow-lg shadow-red-500/20 transition-all active:scale-95" onClick={() => handleRejectReferral(reward.id)}>
+                                    <X size={14} className="mr-1.5" /> Reject
+                                  </Button>
+                                </div>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        {referralRewards.length === 0 && (
+                          <TableRow>
+                            <TableCell colSpan={6} className="text-center py-20">
+                              <div className="flex flex-col items-center gap-3">
+                                <div className="w-16 h-16 rounded-full bg-slate-900 flex items-center justify-center text-slate-700">
+                                  <Users size={32} />
+                                </div>
+                                <p className="text-slate-500 font-bold uppercase tracking-widest text-xs">No referral claims found</p>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </CardContent>
               </Card>
             </div>
@@ -1128,49 +1427,174 @@ export default function Admin() {
                   <CardTitle className="text-white">New Broadcast Message</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={handleBroadcast} className="space-y-4">
+                  <form onSubmit={handleBroadcast} className="space-y-6">
                     <div className="space-y-2">
-                      <Label className="text-slate-300">Message Title</Label>
-                      <Input 
-                        placeholder="e.g. Weekly Bonus Alert! 🎁" 
-                        value={broadcast.title}
-                        onChange={e => setBroadcast({...broadcast, title: e.target.value})}
-                        className="bg-slate-900 border-slate-700 text-white"
-                        required
-                      />
+                       <Label className="text-slate-300">Audience Type</Label>
+                       <div className="grid grid-cols-2 gap-3">
+                         <button
+                           type="button"
+                           onClick={() => setBroadcast({...broadcast, targetType: 'all', targetUids: []})}
+                           className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all font-bold uppercase text-[10px] tracking-widest ${broadcast.targetType === 'all' ? 'border-indigo-600 bg-indigo-600/10 text-white shadow-[0_0_20px_rgba(79,70,229,0.1)]' : 'border-slate-800 bg-slate-900/50 text-slate-500'}`}
+                         >
+                           <Users size={16} />
+                           All Registered Users
+                         </button>
+                         <button
+                           type="button"
+                           onClick={() => setBroadcast({...broadcast, targetType: 'specific'})}
+                           className={`flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all font-bold uppercase text-[10px] tracking-widest ${broadcast.targetType === 'specific' ? 'border-indigo-600 bg-indigo-600/10 text-white shadow-[0_0_20px_rgba(79,70,229,0.1)]' : 'border-slate-800 bg-slate-900/50 text-slate-500'}`}
+                         >
+                           <User size={16} />
+                           Specific Users
+                         </button>
+                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Detailed Message</Label>
-                      <Textarea 
-                        placeholder="Type your message here..." 
-                        value={broadcast.message}
-                        onChange={e => setBroadcast({...broadcast, message: e.target.value})}
-                        className="bg-slate-900 border-slate-700 text-white min-h-[120px]"
-                        required
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Notification Type</Label>
-                      <div className="grid grid-cols-3 gap-2">
-                        {['info', 'success', 'alert', 'gift', 'premium'].map((t) => (
-                          <button
-                            key={t}
-                            type="button"
-                            onClick={() => setBroadcast({...broadcast, type: t as any})}
-                            className={`py-2 rounded-lg border-2 transition-all text-xs font-bold uppercase tracking-wider ${broadcast.type === t ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-slate-700 text-slate-500'}`}
-                          >
-                            {t}
-                          </button>
-                        ))}
+
+                    {broadcast.targetType === 'specific' && (
+                      <div className="space-y-3 p-4 bg-slate-900/40 rounded-2xl border border-slate-700/50 animate-in slide-in-from-top-2 duration-300">
+                        <Label className="text-slate-300 flex items-center gap-2">
+                           <Users size={12} className="text-indigo-400" />
+                           Select Target Recipients ({broadcast.targetUids.length})
+                        </Label>
+                        <div className="relative">
+                          <Input 
+                            placeholder="Type username or account ID..." 
+                            value={userSearchTerm}
+                            onChange={e => setUserSearchTerm(e.target.value)}
+                            className="bg-slate-900 border-slate-700 h-11 rounded-xl focus:ring-indigo-500/20 text-white placeholder:text-slate-400"
+                          />
+                          {userSearchTerm && (
+                            <button 
+                              type="button"
+                              onClick={() => setUserSearchTerm('')}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white"
+                            >
+                              <X size={16} />
+                            </button>
+                          )}
+                        </div>
+
+                        {userSearchTerm && (
+                          <div className="bg-slate-950 border border-slate-700 rounded-xl max-h-48 overflow-y-auto p-1 mt-2 shadow-2xl shadow-black/50 divide-y divide-slate-800">
+                            {users.filter(u => 
+                              (u.username?.toLowerCase().includes(userSearchTerm.toLowerCase()) || 
+                               u.uid?.toLowerCase().includes(userSearchTerm.toLowerCase())) &&
+                              !broadcast.targetUids.includes(u.uid)
+                            ).slice(0, 6).map(u => (
+                              <div 
+                                key={u.uid}
+                                onClick={() => {
+                                  setBroadcast({...broadcast, targetUids: [...broadcast.targetUids, u.uid]});
+                                  setUserSearchTerm('');
+                                }}
+                                className="p-3 cursor-pointer flex items-center justify-between group hover:bg-indigo-600/10 transition-colors"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-slate-900 flex items-center justify-center border border-slate-800 text-slate-500 group-hover:border-indigo-500/30 group-hover:text-indigo-400 transition-colors">
+                                    <User size={14} />
+                                  </div>
+                                  <div className="flex flex-col">
+                                    <span className="font-bold text-sm text-slate-300 group-hover:text-white">{u.username}</span>
+                                    <span className="text-[9px] text-slate-500 font-mono tracking-tighter uppercase">{u.uid}</span>
+                                  </div>
+                                </div>
+                                <div className="w-6 h-6 rounded-lg opacity-0 group-hover:opacity-100 flex items-center justify-center bg-indigo-500/20 text-indigo-400 transition-all">
+                                  <Plus size={14} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {broadcast.targetUids.length > 0 && (
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            {broadcast.targetUids.map(uid => {
+                              const u = users.find(user => user.uid === uid);
+                              return (
+                                <div key={uid} className="flex items-center gap-2 p-1.5 pl-3 bg-indigo-500/10 border border-indigo-500/20 rounded-full animate-in zoom-in-95 duration-200">
+                                  <span className="text-[10px] font-bold text-indigo-400">{u?.username || uid.slice(0, 6)}</span>
+                                  <button 
+                                    type="button"
+                                    onClick={() => setBroadcast({...broadcast, targetUids: broadcast.targetUids.filter(id => id !== uid)})}
+                                    className="w-5 h-5 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center hover:bg-indigo-500/40"
+                                  >
+                                    <X size={10} />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                            {broadcast.targetUids.length > 1 && (
+                              <button 
+                                type="button"
+                                onClick={() => setBroadcast({...broadcast, targetUids: []})}
+                                className="text-[10px] font-bold text-red-400 hover:text-red-300 px-2"
+                              >
+                                Clear All
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">Message Title</Label>
+                        <Input 
+                          placeholder="e.g. Weekly Bonus Alert! 🎁" 
+                          value={broadcast.title}
+                          onChange={e => setBroadcast({...broadcast, title: e.target.value})}
+                          className="bg-slate-950 border-slate-700 text-white h-12 rounded-xl placeholder:text-slate-500 focus:ring-indigo-500/20"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">Detailed Message</Label>
+                        <Textarea 
+                          placeholder="Type your message here..." 
+                          value={broadcast.message}
+                          onChange={e => setBroadcast({...broadcast, message: e.target.value})}
+                          className="bg-slate-950 border-slate-700 text-white min-h-[120px] rounded-xl placeholder:text-slate-500 focus:ring-indigo-500/20"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">Target Link (Optional)</Label>
+                        <Input 
+                          placeholder="e.g. /tasks or /wallet" 
+                          value={broadcast.link}
+                          onChange={e => setBroadcast({...broadcast, link: e.target.value})}
+                          className="bg-slate-950 border-slate-700 text-white h-12 rounded-xl placeholder:text-slate-500 focus:ring-indigo-500/20"
+                        />
+                        <p className="text-[10px] text-slate-500 font-medium px-1">Internal routes like /tasks, /wallet, /withdraw, etc.</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">Notification Appearance</Label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {['info', 'success', 'alert', 'gift', 'premium'].map((t) => (
+                            <button
+                              key={t}
+                              type="button"
+                              onClick={() => setBroadcast({...broadcast, type: t as any})}
+                              className={`py-3 rounded-xl border-2 transition-all text-[10px] font-black uppercase tracking-[0.2em] ${broadcast.type === t ? 'border-amber-500 bg-amber-500/10 text-amber-500' : 'border-slate-800 bg-slate-950 text-slate-600 grayscale hover:grayscale-0'}`}
+                            >
+                              {t}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
+
                     <Button 
                       type="submit" 
                       disabled={broadcasting}
-                      className="w-full bg-indigo-600 hover:bg-indigo-700 h-14 font-black text-lg gap-2 mt-4"
+                      className="w-full bg-indigo-600 hover:bg-indigo-700 h-16 font-black text-xs tracking-[0.2em] gap-3 rounded-2xl shadow-xl shadow-indigo-600/20 border-b-4 border-indigo-800 active:border-b-0 active:translate-y-1 transition-all mt-4"
                     >
-                      {broadcasting ? <RefreshCw className="animate-spin" /> : <Bell size={20} />}
-                      SEND TO {users.length} USERS
+                      {broadcasting ? <RefreshCw className="animate-spin text-white" /> : <Bell size={24} className="text-white" />}
+                      {broadcast.targetType === 'all' 
+                        ? `BROADCAST TO ${users.length} USERS` 
+                        : `SEND TO ${broadcast.targetUids.length} SELECTED USERS`
+                      }
                     </Button>
                   </form>
                 </CardContent>
@@ -1258,6 +1682,10 @@ export default function Admin() {
                           <Label>Number Memory (per level)</Label>
                           <Input type="number" value={gameSettings.number_memory_points} onChange={e => setGameSettings({...gameSettings, number_memory_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
                         </div>
+                        <div className="space-y-2">
+                          <Label>Watch Ads (per video)</Label>
+                          <Input type="number" value={gameSettings.watch_ads_points} onChange={e => setGameSettings({...gameSettings, watch_ads_points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" />
+                        </div>
                         <Button type="submit" className="md:col-span-2 lg:col-span-3 bg-emerald-600 hover:bg-emerald-700">Save Game Settings</Button>
                       </form>
                     </CardContent>
@@ -1314,6 +1742,13 @@ export default function Admin() {
                           <Label className="text-slate-300">Scratch Cooldown (Minutes)</Label>
                           <div className="flex gap-2">
                             <Input type="number" value={gameSettings.scratch_cooldown} onChange={e => setGameSettings({...gameSettings, scratch_cooldown: parseInt(e.target.value) || 1})} className="bg-slate-900 border-slate-700 text-white" />
+                            <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Watch Ads Cooldown (Minutes)</Label>
+                          <div className="flex gap-2">
+                            <Input type="number" value={gameSettings.watch_ads_cooldown} onChange={e => setGameSettings({...gameSettings, watch_ads_cooldown: parseInt(e.target.value) || 1})} className="bg-slate-900 border-slate-700 text-white" />
                             <Button className="bg-indigo-600 hover:bg-indigo-700" onClick={handleUpdateGameSettings}>Update</Button>
                           </div>
                         </div>
@@ -1431,95 +1866,172 @@ export default function Admin() {
           )}
 
           {activeTab === 'ads' && (
-            <div className="space-y-6">
-              <Card className="bg-slate-800 border-slate-700 text-slate-100">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <LayoutGrid className="text-indigo-400" size={20} />
-                    Ad Network Settings (Adsterra)
-                  </CardTitle>
-                  <CardDescription className="text-slate-400">Manage your ad codes for different formats. Paste the HTML/JS code here.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Popunder Ad Code</Label>
-                      <Textarea 
-                        placeholder="Paste Popunder script here..." 
-                        value={gameSettings.ad_popunder || ''} 
-                        onChange={e => setGameSettings({...gameSettings, ad_popunder: e.target.value})}
-                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Social Bar Ad Code</Label>
-                      <Textarea 
-                        placeholder="Paste Social Bar script here..." 
-                        value={gameSettings.ad_social_bar || ''} 
-                        onChange={e => setGameSettings({...gameSettings, ad_social_bar: e.target.value})}
-                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Banner 728x90 (Header/Footer)</Label>
-                      <Textarea 
-                        placeholder="Paste Banner 728x90 script here..." 
-                        value={gameSettings.ad_banner_728x90 || ''} 
-                        onChange={e => setGameSettings({...gameSettings, ad_banner_728x90: e.target.value})}
-                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Banner 468x60 (Game/Task)</Label>
-                      <Textarea 
-                        placeholder="Paste Banner 468x60 script here..." 
-                        value={gameSettings.ad_banner_468x60 || ''} 
-                        onChange={e => setGameSettings({...gameSettings, ad_banner_468x60: e.target.value})}
-                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Banner 320x50 (Mobile View)</Label>
-                      <Textarea 
-                        placeholder="Paste Banner 320x50 script here..." 
-                        value={gameSettings.ad_banner_320x50 || ''} 
-                        onChange={e => setGameSettings({...gameSettings, ad_banner_320x50: e.target.value})}
-                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Square 300x250 (Mid-page)</Label>
-                      <Textarea 
-                        placeholder="Paste Square 300x250 script here..." 
-                        value={gameSettings.ad_square_300x250 || ''} 
-                        onChange={e => setGameSettings({...gameSettings, ad_square_300x250: e.target.value})}
-                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Native Ad Top</Label>
-                      <Textarea 
-                        placeholder="Paste Native Ad script here..." 
-                        value={gameSettings.ad_native_top || ''} 
-                        onChange={e => setGameSettings({...gameSettings, ad_native_top: e.target.value})}
-                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label className="text-slate-300">Native Ad Bottom</Label>
-                      <Textarea 
-                        placeholder="Paste Native Ad script here..." 
-                        value={gameSettings.ad_native_bottom || ''} 
-                        onChange={e => setGameSettings({...gameSettings, ad_native_bottom: e.target.value})}
-                        className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
-                      />
-                    </div>
-                  </div>
-                  <Button onClick={handleUpdateGameSettings} className="w-full bg-indigo-600 hover:bg-indigo-700 py-6 font-bold text-lg rounded-2xl">
-                    SAVE AD CODES
-                  </Button>
-                </CardContent>
-              </Card>
+            <div className="space-y-6 animate-in fade-in duration-500">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold text-white">Ad Management</h2>
+                  <p className="text-slate-400">Configure your ad network codes across the platform.</p>
+                </div>
+              </div>
+
+              <Tabs defaultValue="adsterra" className="space-y-6">
+                <TabsList className="bg-slate-800 border-slate-700 p-1">
+                  <TabsTrigger value="adsterra" className="data-[state=active]:bg-indigo-600 data-[state=active]:text-white gap-2">
+                    <LayoutGrid size={16} />
+                    Adsterra
+                  </TabsTrigger>
+                  <TabsTrigger value="clickadilla" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white gap-2">
+                    <Eye size={16} />
+                    Clickadilla
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="adsterra">
+                  <Card className="bg-slate-800 border-slate-700 text-slate-100">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Badge className="bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Active</Badge>
+                        Adsterra Settings
+                      </CardTitle>
+                      <CardDescription className="text-slate-400">Manage Adsterra HTML/JS scripts for different formats.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Popunder Ad Code</Label>
+                          <Textarea 
+                            placeholder="Paste Popunder script here..." 
+                            value={gameSettings.ad_popunder || ''} 
+                            onChange={e => setGameSettings({...gameSettings, ad_popunder: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Social Bar Ad Code</Label>
+                          <Textarea 
+                            placeholder="Paste Social Bar script here..." 
+                            value={gameSettings.ad_social_bar || ''} 
+                            onChange={e => setGameSettings({...gameSettings, ad_social_bar: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Banner 728x90 (Header/Footer)</Label>
+                          <Textarea 
+                            placeholder="Paste Banner 728x90 script here..." 
+                            value={gameSettings.ad_banner_728x90 || ''} 
+                            onChange={e => setGameSettings({...gameSettings, ad_banner_728x90: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Banner 468x60 (Game/Task)</Label>
+                          <Textarea 
+                            placeholder="Paste Banner 468x60 script here..." 
+                            value={gameSettings.ad_banner_468x60 || ''} 
+                            onChange={e => setGameSettings({...gameSettings, ad_banner_468x60: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Banner 320x50 (Mobile View)</Label>
+                          <Textarea 
+                            placeholder="Paste Banner 320x50 script here..." 
+                            value={gameSettings.ad_banner_320x50 || ''} 
+                            onChange={e => setGameSettings({...gameSettings, ad_banner_320x50: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Square 300x250 (Mid-page)</Label>
+                          <Textarea 
+                            placeholder="Paste Square 300x250 script here..." 
+                            value={gameSettings.ad_square_300x250 || ''} 
+                            onChange={e => setGameSettings({...gameSettings, ad_square_300x250: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Native Ad Top</Label>
+                          <Textarea 
+                            placeholder="Paste Native Ad script here..." 
+                            value={gameSettings.ad_native_top || ''} 
+                            onChange={e => setGameSettings({...gameSettings, ad_native_top: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Native Ad Bottom</Label>
+                          <Textarea 
+                            placeholder="Paste Native Ad script here..." 
+                            value={gameSettings.ad_native_bottom || ''} 
+                            onChange={e => setGameSettings({...gameSettings, ad_native_bottom: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32"
+                          />
+                        </div>
+                      </div>
+                      <Button onClick={handleUpdateGameSettings} className="w-full bg-emerald-600 hover:bg-emerald-700 py-6 font-bold text-lg rounded-2xl">
+                        UPDATE ADSTERRA CODES
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="clickadilla">
+                  <Card className="bg-slate-800 border-slate-700 text-slate-100">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20">Alternate</Badge>
+                        Clickadilla Settings
+                      </CardTitle>
+                      <CardDescription className="text-slate-400">Manage Clickadilla HTML/JS scripts for different formats.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Clickadilla Popunder</Label>
+                          <Textarea 
+                            placeholder="Paste Clickadilla Popunder script here..." 
+                            value={gameSettings.clickadilla_popunder || ''} 
+                            onChange={e => setGameSettings({...gameSettings, clickadilla_popunder: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32 border-blue-500/20"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Clickadilla Banner</Label>
+                          <Textarea 
+                            placeholder="Paste Clickadilla Banner script here..." 
+                            value={gameSettings.clickadilla_banner || ''} 
+                            onChange={e => setGameSettings({...gameSettings, clickadilla_banner: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32 border-blue-500/20"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Clickadilla Native</Label>
+                          <Textarea 
+                            placeholder="Paste Clickadilla Native script here..." 
+                            value={gameSettings.clickadilla_native || ''} 
+                            onChange={e => setGameSettings({...gameSettings, clickadilla_native: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32 border-blue-500/20"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Clickadilla In-stream (Video Ads)</Label>
+                          <Textarea 
+                            placeholder="Paste Clickadilla In-stream script here..." 
+                            value={gameSettings.clickadilla_instream || ''} 
+                            onChange={e => setGameSettings({...gameSettings, clickadilla_instream: e.target.value})}
+                            className="bg-slate-900 border-slate-700 font-mono text-xs h-32 border-blue-500/20"
+                          />
+                        </div>
+                      </div>
+                      <Button onClick={handleUpdateGameSettings} className="w-full bg-blue-600 hover:bg-blue-700 py-6 font-bold text-lg rounded-2xl">
+                        UPDATE CLICKADILLA CODES
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
 

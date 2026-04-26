@@ -1,12 +1,13 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Link } from 'react-router-dom';
 import { 
   User, Mail, Calendar, Wallet, LogOut, Shield, Zap, 
   Copy, CheckCircle2, Award, TrendingUp, Users, Gift,
   Star, Clock, ChevronRight, Sparkles, ArrowUpRight, QrCode,
-  Calculator, Brain, ShieldCheck, Palette, Eye
+  Calculator, Brain, ShieldCheck, Palette, Eye, Heart, Activity
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -21,40 +22,64 @@ export default function Profile() {
   const { settings } = useGameSettings();
   const [realActivities, setRealActivities] = React.useState<any[]>([]);
   const [loadingActivities, setLoadingActivities] = React.useState(true);
+  const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false);
 
   React.useEffect(() => {
     if (!user) return;
 
+    let isMounted = true;
     // Fetch more items to handle sorting of mixed data types (String vs Timestamp) in memory
     const q = query(
       collection(db, 'history'),
       where('userId', '==', user.uid),
-      orderBy('created_at', 'desc'),
-      limit(20)
+      limit(50)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const activitiesData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as any[];
+      if (!isMounted) return;
+      try {
+        const activitiesSnapshotData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as any[];
 
-      // In-memory unified sort to handle mixed data types during transition
-      const sorted = activitiesData.sort((a, b) => {
-        const dateA = a.created_at?.toMillis ? a.created_at.toMillis() : new Date(a.created_at || a.timestamp).getTime();
-        const dateB = b.created_at?.toMillis ? b.created_at.toMillis() : new Date(b.created_at || b.timestamp).getTime();
-        return (dateB || 0) - (dateA || 0);
-      });
+        // In-memory unified sort to handle mixed data types during transition
+        const sorted = activitiesSnapshotData.sort((a, b) => {
+          const rawA = a.created_at || a.timestamp;
+          const rawB = b.created_at || b.timestamp;
+          
+          const getTime = (raw: any) => {
+            if (!raw) return 0;
+            if (raw.toMillis) return raw.toMillis();
+            if (raw.seconds) return raw.seconds * 1000;
+            if (raw instanceof Date) return raw.getTime();
+            const parsed = new Date(raw).getTime();
+            return isNaN(parsed) ? 0 : parsed;
+          };
 
-      setRealActivities(sorted.slice(0, 4));
-      setLoadingActivities(false);
+          return getTime(rawB) - getTime(rawA);
+        });
+
+        setRealActivities(sorted.slice(0, 4));
+        setLoadingActivities(false);
+      } catch (err) {
+        console.error("Error processing profile activities:", err);
+        setLoadingActivities(false);
+      }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'history');
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'history');
+      } catch (e) {
+        console.error(e);
+      }
       setLoadingActivities(false);
     });
 
-    return () => unsubscribe();
-  }, [user]);
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [user?.uid]);
 
   // Level calculation logic
   const pointsPerLevel = 1000;
@@ -165,20 +190,50 @@ export default function Profile() {
                 </div>
               </div>
 
-              {/* Progress Bar */}
-              <div className="space-y-1.5 max-w-xs mx-auto md:mx-0">
-                <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  <span>Level Progress</span>
-                  <span>{Math.round(progressToNextLevel)}%</span>
+              {/* Progress Bars */}
+              <div className="space-y-4 max-w-xs mx-auto md:mx-0">
+                {/* Level Progress */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span>Level Progress</span>
+                    <span>{Math.round(progressToNextLevel)}%</span>
+                  </div>
+                  <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${progressToNextLevel}%` }}
+                      transition={{ duration: 1, ease: "easeOut" }}
+                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
+                    />
+                  </div>
                 </div>
-                <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <motion.div 
-                    initial={{ width: 0 }}
-                    animate={{ width: `${progressToNextLevel}%` }}
-                    transition={{ duration: 1, ease: "easeOut" }}
-                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full"
-                  />
+
+                {/* Profile Health Progress */}
+                <div className="space-y-1.5">
+                  <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                    <span>Profile Health</span>
+                    <span className={
+                      (user?.profile_health ?? 100) >= 60 ? 'text-emerald-500' :
+                      (user?.profile_health ?? 100) >= 40 ? 'text-yellow-500' :
+                      (user?.profile_health ?? 100) >= 20 ? 'text-orange-500' :
+                      'text-red-500'
+                    }>{user?.profile_health ?? 100}%</span>
+                  </div>
+                  <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${user?.profile_health ?? 100}%` }}
+                      transition={{ duration: 1.2, ease: "easeOut" }}
+                      className={`h-full rounded-full ${
+                        (user?.profile_health ?? 100) >= 60 ? 'bg-emerald-500' :
+                        (user?.profile_health ?? 100) >= 40 ? 'bg-yellow-400' :
+                        (user?.profile_health ?? 100) >= 20 ? 'bg-orange-500' :
+                        'bg-red-500'
+                      }`}
+                    />
+                  </div>
                 </div>
+
                 <p className="text-[10px] text-slate-400 font-medium italic">
                   {pointsNeeded} points needed for next level
                 </p>
@@ -187,8 +242,6 @@ export default function Profile() {
           </div>
         </div>
       </motion.div>
-
-      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" />
 
       {/* Stats Bento Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -238,8 +291,11 @@ export default function Profile() {
         </motion.div>
       </div>
 
-      <AdUnit code={settings.ad_native_bottom} className="my-6 min-h-[100px]" />
-
+      {/* Middle Ad */}
+      <motion.div variants={itemVariants} className="px-1 py-2">
+        <AdUnit code={settings.ad_banner_728x90 || settings.ad_square_300x250 || settings.ad_banner_320x50 || settings.clickadilla_banner} />
+      </motion.div>
+      
       <div className="grid grid-cols-1 gap-6">
         {/* Recent Activity */}
         <motion.div variants={itemVariants}>
@@ -284,15 +340,32 @@ export default function Profile() {
                             <span className="text-[10px] font-bold text-slate-400 uppercase">
                               {(() => {
                                 const rawDate = activity.timestamp || activity.created_at;
-                                if (!rawDate) return 'Unknown';
-                                const date = rawDate.toMillis ? new Date(rawDate.toMillis()) : new Date(rawDate);
-                                return date.toLocaleDateString();
+                                if (!rawDate) return 'Recently';
+                                
+                                let itemDate: Date | null = null;
+                                try {
+                                  if (rawDate.seconds !== undefined) {
+                                    itemDate = new Date(rawDate.seconds * 1000);
+                                  } else if (rawDate && typeof rawDate.toMillis === 'function') {
+                                    const ms = rawDate.toMillis();
+                                    if (typeof ms === 'number') itemDate = new Date(ms);
+                                  } else if (rawDate instanceof Date) {
+                                    itemDate = rawDate;
+                                  } else {
+                                    const parsed = new Date(rawDate);
+                                    if (!isNaN(parsed.getTime())) itemDate = parsed;
+                                  }
+                                } catch (e) {
+                                  itemDate = null;
+                                }
+
+                                return (!itemDate || isNaN(itemDate.getTime())) ? 'Recently' : itemDate.toLocaleDateString();
                               })()}
                             </span>
                           </div>
-                          {(idx + 1) % 2 === 0 && randomAd && (
+                          {(idx + 1) % 4 === 0 && randomAd && (
                             <div className="my-2 flex justify-center">
-                              <AdUnit code={randomAd} className="min-h-[50px] scale-90" minimal />
+                              <AdUnit code={randomAd} className="scale-90" minimal />
                             </div>
                           )}
                         </React.Fragment>
@@ -310,6 +383,11 @@ export default function Profile() {
               </div>
             </CardContent>
           </Card>
+        </motion.div>
+
+        {/* Second Middle Ad */}
+        <motion.div variants={itemVariants} className="px-1 py-4">
+          <AdUnit code={settings.ad_banner_728x90 || settings.ad_square_300x250 || settings.clickadilla_banner} />
         </motion.div>
       </div>
 
@@ -334,12 +412,16 @@ export default function Profile() {
           <SettingsItem 
             icon={<Calendar size={18} className="text-indigo-500" />} 
             label="Joined Date" 
-            value={new Date(user?.created_at || '').toLocaleDateString()} 
+            value={(() => {
+              const rawDate = user?.created_at;
+              const date = rawDate ? new Date(rawDate) : null;
+              return date && !isNaN(date.getTime()) ? date.toLocaleDateString() : 'N/A';
+            })()} 
           />
         </div>
 
         <Button 
-          onClick={logout}
+          onClick={() => setShowLogoutConfirm(true)}
           variant="outline" 
           className="w-full h-16 rounded-[1.5rem] font-bold gap-3 border-red-100 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/30 dark:text-red-400 dark:hover:bg-red-900/20 transition-all group"
         >
@@ -347,6 +429,52 @@ export default function Profile() {
           Logout
         </Button>
       </motion.div>
+
+      {/* Logout Confirmation Modal */}
+      <AnimatePresence>
+        {showLogoutConfirm && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowLogoutConfirm(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative z-10 border border-slate-100 dark:border-slate-800"
+            >
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-3xl flex items-center justify-center text-red-500 mb-2">
+                  <LogOut size={40} />
+                </div>
+                <h3 className="text-2xl font-black text-slate-900 dark:text-white">Sign Out?</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-sm font-medium leading-relaxed">
+                  Are you sure you want to sign out? You will need to login again to access your rewards.
+                </p>
+                <div className="flex flex-col w-full gap-3 pt-4">
+                  <Button 
+                    onClick={logout}
+                    className="w-full h-14 bg-red-600 hover:bg-red-700 text-white font-bold rounded-2xl shadow-lg shadow-red-600/20"
+                  >
+                    Yes, Sign Me Out
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => setShowLogoutConfirm(false)}
+                    className="w-full h-14 text-slate-500 font-bold rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    Stay Logged In
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

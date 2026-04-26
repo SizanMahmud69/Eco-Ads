@@ -78,6 +78,12 @@ export default function Captcha() {
       }
     } else {
       toast.error('Incorrect captcha. Try again.');
+      // Decrease health on wrong answer
+      if (user) {
+        updateUser({
+          profile_health: Math.max(0, (user.profile_health ?? 100) - 3)
+        }).catch(console.error);
+      }
       generateCaptcha();
     }
   };
@@ -97,12 +103,10 @@ export default function Captcha() {
         </div>
       </header>
 
-      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" minimal hideLabel />
-      <AdUnit code={settings.ad_banner_468x60} className="my-2" />
+      <AdUnit code={settings.ad_banner_728x90} className="my-6" minimal hideLabel />
 
       <Card className="border-2 border-emerald-100 shadow-xl overflow-hidden">
         <CardContent className="p-8 space-y-8">
-          <AdUnit code={settings.ad_banner_468x60} className="mb-6 min-h-[60px]" />
           {!canPlay ? (
             <div className="text-center space-y-4 py-10">
               <h2 className="text-xl font-bold text-slate-800">Daily Limit Reached</h2>
@@ -213,7 +217,6 @@ export default function Captcha() {
         <p className="text-xs text-slate-400">Each correct captcha earns you <span className="text-emerald-500 font-bold">{rewardPoints} points</span>.</p>
       </div>
       <div className="flex justify-center flex-col items-center gap-4 mt-8">
-        <AdUnit code={settings.ad_square_300x250} />
         <AdUnit code={settings.ad_native_bottom} className="w-full" />
       </div>
     </div>

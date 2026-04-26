@@ -14,7 +14,7 @@ import { useGameSettings } from '@/hooks/useGameSettings';
 
 import { Wallet, History, AlertCircle, Check } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, increment } from 'firebase/firestore';
+import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, increment, limit } from 'firebase/firestore';
 
 export default function Withdraw() {
   const { user, updateUser } = useAuth();
@@ -33,17 +33,33 @@ export default function Withdraw() {
       const q = query(
         collection(db, 'withdrawals'),
         where('userId', '==', user.uid),
-        orderBy('created_at', 'desc')
+        limit(50)
       );
 
       const unsubscribe = onSnapshot(q, (snapshot) => {
-        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const withdrawalSnapshotData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Sort in-memory to avoid index requirement
+        const data = withdrawalSnapshotData.sort((a: any, b: any) => {
+          const rawA = a.created_at || a.timestamp;
+          const rawB = b.created_at || b.timestamp;
+          const getTime = (raw: any) => {
+            if (!raw) return 0;
+            if (raw.seconds !== undefined) return raw.seconds * 1000;
+            if (typeof raw.toMillis === 'function') return raw.toMillis();
+            if (raw instanceof Date) return raw.getTime();
+            const parsed = new Date(raw).getTime();
+            return isNaN(parsed) ? 0 : parsed;
+          };
+          return getTime(rawB) - getTime(rawA);
+        });
+
         setWithdrawals(data);
         
         if (data.length > 0) {
           const lastWithdrawal: any = data[0];
           if (lastWithdrawal.created_at) {
-            const lastTime = lastWithdrawal.created_at.toMillis ? lastWithdrawal.created_at.toMillis() : new Date(lastWithdrawal.created_at).getTime();
+            const lastTime = lastWithdrawal.created_at?.toMillis ? lastWithdrawal.created_at.toMillis() : (lastWithdrawal.created_at ? new Date(lastWithdrawal.created_at).getTime() : Date.now());
             const cooldownMs = 24 * 60 * 60 * 1000;
             const now = Date.now();
             const diff = cooldownMs - (now - lastTime);
@@ -51,7 +67,11 @@ export default function Withdraw() {
           }
         }
       }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'withdrawals');
+        try {
+          handleFirestoreError(error, OperationType.LIST, 'withdrawals');
+        } catch (e) {
+          console.error(e);
+        }
       });
 
       return () => unsubscribe();
@@ -131,9 +151,7 @@ export default function Withdraw() {
         <p className="text-slate-500">Convert your hard-earned points into real money.</p>
       </header>
 
-      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" />
-
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
         {[
           { id: 'bKash', logo: 'https://upload.wikimedia.org/wikipedia/en/thumb/8/8b/Bkash_logo.svg/512px-Bkash_logo.svg.png' },
           { id: 'Nagad', logo: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/Nagad_Logo.svg/512px-Nagad_Logo.svg.png' },
@@ -168,7 +186,7 @@ export default function Withdraw() {
         ))}
       </div>
 
-      <AdUnit code={settings.ad_native_bottom} className="w-full my-6 min-h-[100px]" />
+      <AdUnit code={settings.ad_native_top || settings.clickadilla_native} className="w-full my-6" />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Withdrawal Form */}
@@ -181,7 +199,7 @@ export default function Withdraw() {
             <CardDescription>{settings.points_per_bdt || 1000} Points = 1 BDT</CardDescription>
           </CardHeader>
           <CardContent>
-            <AdUnit code={settings.ad_square_300x250} className="mb-6 min-h-[250px]" />
+            <AdUnit code={settings.ad_square_300x250} className="mb-6" />
             <form onSubmit={handleWithdraw} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="points">Points to Withdraw</Label>
@@ -292,11 +310,11 @@ export default function Withdraw() {
                             </Badge>
                           </TableCell>
                         </TableRow>
-                        {(idx + 1) % 3 === 0 && randomAd && (
+                        {(idx + 1) % 4 === 0 && randomAd && (
                           <TableRow>
                             <TableCell colSpan={3} className="p-2 border-none">
                               <div className="flex justify-center">
-                                <AdUnit code={randomAd} className="min-h-[50px] scale-90" minimal />
+                                <AdUnit code={randomAd} className="scale-90" minimal />
                               </div>
                             </TableCell>
                           </TableRow>

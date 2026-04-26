@@ -53,24 +53,49 @@ export default function Wallet() {
   useEffect(() => {
     if (!user) return;
 
+    let isMounted = true;
     const q = query(
       collection(db, 'history'),
       where('userId', '==', user.uid),
-      orderBy('created_at', 'desc'),
-      limit(50)
+      limit(100)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const historyData = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setHistory(historyData);
-      setLoading(false);
+      if (!isMounted) return;
+      try {
+        const historyData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+
+        // Sort in-memory to avoid index requirement
+        const sorted = historyData.sort((a: any, b: any) => {
+          const rawA = a.created_at || a.timestamp;
+          const rawB = b.created_at || b.timestamp;
+          const getTime = (raw: any) => {
+            if (!raw) return 0;
+            if (raw.seconds !== undefined) return raw.seconds * 1000;
+            if (typeof raw.toMillis === 'function') return raw.toMillis();
+            if (raw instanceof Date) return raw.getTime();
+            const parsed = new Date(raw).getTime();
+            return isNaN(parsed) ? 0 : parsed;
+          };
+          return getTime(rawB) - getTime(rawA);
+        });
+
+        setHistory(sorted);
+        setLoading(false);
+      } catch (err) {
+        console.error("Error processing wallet history:", err);
+        setLoading(false);
+      }
     });
 
-    return () => unsubscribe();
-  }, [user]);
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [user?.uid]);
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -144,8 +169,6 @@ export default function Wallet() {
         </Card>
       </motion.div>
 
-      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" />
-
       {/* History Section */}
       <section className="space-y-4">
         <div className="flex items-center justify-between px-2">
@@ -186,7 +209,30 @@ export default function Wallet() {
                         <div className="flex-1">
                           <h4 className="font-bold text-sm capitalize">{item.type.replace('_', ' ')}</h4>
                           <p className="text-[10px] text-slate-400 font-medium">
-                            {new Date(item.created_at).toLocaleString()}
+                            {(() => {
+                              const rawDate = item.created_at || item.timestamp;
+                              let itemDate: Date | null = null;
+                              
+                              if (rawDate) {
+                                try {
+                                  if (rawDate.seconds !== undefined) {
+                                    itemDate = new Date(rawDate.seconds * 1000);
+                                  } else if (rawDate && typeof rawDate.toMillis === 'function') {
+                                    const ms = rawDate.toMillis();
+                                    if (typeof ms === 'number') itemDate = new Date(ms);
+                                  } else if (rawDate instanceof Date) {
+                                    itemDate = rawDate;
+                                  } else {
+                                    const parsed = new Date(rawDate);
+                                    if (!isNaN(parsed.getTime())) itemDate = parsed;
+                                  }
+                                } catch (e) {
+                                  itemDate = null;
+                                }
+                              }
+
+                              return (!itemDate || isNaN(itemDate.getTime())) ? 'Recently' : itemDate.toLocaleString();
+                            })()}
                           </p>
                         </div>
                         <div className="text-right">
@@ -202,7 +248,7 @@ export default function Wallet() {
                   
                   {(idx + 1) % 4 === 0 && (
                     <div className="my-4 flex justify-center">
-                      <AdUnit code={settings.ad_banner_468x60} className="min-h-[60px]" />
+                      <AdUnit code={settings.ad_banner_468x60} className="" />
                     </div>
                   )}
                 </div>

@@ -135,8 +135,7 @@ export default function ColorMatch() {
         </div>
       </header>
 
-      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" minimal hideLabel />
-      <AdUnit code={settings.ad_banner_468x60} className="my-2" />
+      <AdUnit code={settings.ad_banner_728x90} className="my-6" minimal hideLabel />
 
       {!isPlaying ? (
         <Card className="border-2 border-pink-100 shadow-xl overflow-hidden">
@@ -203,7 +202,6 @@ export default function ColorMatch() {
         </motion.div>
       )}
       <div className="flex justify-center flex-col items-center gap-4 mt-8">
-        <AdUnit code={settings.ad_square_300x250} />
         <AdUnit code={settings.ad_native_bottom} className="w-full" />
       </div>
     </div>

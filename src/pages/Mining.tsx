@@ -160,13 +160,8 @@ export default function Mining() {
         <p className="text-slate-500">Start your mining rig and earn points while you sleep.</p>
       </header>
 
-      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" minimal hideLabel />
-      <AdUnit code={settings.ad_banner_468x60} className="my-2" />
-
       <Card className="max-w-md mx-auto overflow-hidden border-b-4 border-emerald-500/20">
         <CardContent className="p-8 space-y-6">
-          <AdUnit code={settings.ad_square_300x250} className="mb-6 min-h-[250px]" />
-          <AdUnit code={settings.ad_banner_320x50} className="mb-4" />
           {!activeSession ? (
             <div className="text-center space-y-6">
               <div className="space-y-2">
@@ -247,6 +242,8 @@ export default function Mining() {
           <Benefit title="Safe & Secure" description="No battery drain or device heating." />
         </div>
       </section>
+
+      <AdUnit code={settings.ad_native_bottom} className="mt-8" />
     </div>
   );
 }

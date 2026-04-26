@@ -142,21 +142,22 @@ export default function Refer() {
           </Card>
         </section>
 
-        <div className="flex justify-center">
-          <AdUnit code={settings.ad_square_300x250} />
-        </div>
+        {/* Ad 1 */}
+        <AdUnit code={settings.ad_banner_728x90 || settings.ad_square_300x250 || settings.ad_banner_320x50 || settings.clickadilla_banner} />
 
         <section className="space-y-4">
           <h2 className="text-xl font-bold">How it works</h2>
           <div className="space-y-4">
             <Step number="1" title="Share your code" description="Send your unique referral code to your friends." />
+            
+            {/* Ad 2 */}
+            <AdUnit code={settings.ad_banner_728x90 || settings.ad_square_300x250 || settings.ad_banner_320x50} minimal />
+
             <Step number="2" title="They sign up" description="Your friends use your code during registration." />
             <Step number="3" title="Earn Bonus" description={`Get ${settings.referral_bonus || 500} bonus points when your friend reaches 1000 points!`} />
           </div>
         </section>
       </div>
-
-      <AdUnit code={settings.ad_native_bottom} className="w-full" />
     </div>
   );
 }

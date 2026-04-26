@@ -10,6 +10,56 @@ import { CheckCircle2, Clock, ExternalLink, Loader2 } from 'lucide-react';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, onSnapshot, addDoc, serverTimestamp, increment, arrayUnion, doc, updateDoc } from 'firebase/firestore';
 
+const TaskCard = ({ task, activeTask, completing, startTask, handleCompleteTask }: any) => {
+  return (
+    <Card key={task.id} className="overflow-hidden">
+      <div className="flex flex-col sm:flex-row">
+        <div className="p-6 flex-1 space-y-2">
+          <div className="flex items-center gap-2">
+            <Badge variant={task.type === 'daily' ? 'default' : 'secondary'}>
+              {task.type === 'daily' ? 'Daily' : 'One-time'}
+            </Badge>
+            <CardTitle className="text-xl">{task.title}</CardTitle>
+          </div>
+          <CardDescription>{task.description}</CardDescription>
+          <div className="flex items-center gap-4 pt-2">
+            <div className="flex items-center gap-1 text-primary font-bold">
+              <CheckCircle2 size={16} />
+              <span>{task.points_reward} Points</span>
+            </div>
+            <div className="flex items-center gap-1 text-slate-400 text-sm">
+              <Clock size={16} />
+              <span>{task.timer || 30}s</span>
+            </div>
+          </div>
+        </div>
+        <div className="bg-slate-50 p-6 flex items-center justify-center sm:border-l">
+          {activeTask?.id === task.id ? (
+            <Button 
+              onClick={() => handleCompleteTask(task)}
+              disabled={activeTask.timeLeft > 0 || !!completing}
+              className={`w-full sm:w-auto ${activeTask.timeLeft === 0 ? 'bg-emerald-600 hover:bg-emerald-700 animate-bounce' : ''}`}
+            >
+              {completing === task.id ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
+              {activeTask.timeLeft > 0 ? `Wait ${activeTask.timeLeft}s` : 'Claim Reward'}
+              {activeTask.timeLeft === 0 && <CheckCircle2 size={16} className="ml-2" />}
+            </Button>
+          ) : (
+            <Button 
+              onClick={() => startTask(task)}
+              disabled={!!completing || (!!activeTask && activeTask.id !== task.id)}
+              className="w-full sm:w-auto"
+            >
+              Start Task
+              <ExternalLink size={16} className="ml-2" />
+            </Button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+};
+
 export default function Tasks() {
   const { user, updateUser } = useAuth();
   const { settings } = useGameSettings();
@@ -26,7 +76,11 @@ export default function Tasks() {
       setTasks(uncompletedTasks);
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'tasks');
+      try {
+        handleFirestoreError(error, OperationType.LIST, 'tasks');
+      } catch (e) {
+        console.error(e);
+      }
     });
     return () => unsubscribe();
   }, [user?.completed_tasks]);
@@ -104,56 +158,50 @@ export default function Tasks() {
         <p className="text-slate-500">Complete simple tasks to earn extra points every day.</p>
       </header>
 
-      <AdUnit code={settings.ad_banner_728x90} className="my-4 min-h-[90px]" />
-      <AdUnit code={settings.ad_banner_468x60} className="my-4 min-h-[60px]" />
-
       <div className="grid grid-cols-1 gap-4">
-        {tasks.map((task) => (
-          <Card key={task.id} className="overflow-hidden">
-            <div className="flex flex-col sm:flex-row">
-              <div className="p-6 flex-1 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Badge variant={task.type === 'daily' ? 'default' : 'secondary'}>
-                    {task.type === 'daily' ? 'Daily' : 'One-time'}
-                  </Badge>
-                  <CardTitle className="text-xl">{task.title}</CardTitle>
-                </div>
-                <CardDescription>{task.description}</CardDescription>
-                <div className="flex items-center gap-4 pt-2">
-                  <div className="flex items-center gap-1 text-primary font-bold">
-                    <CheckCircle2 size={16} />
-                    <span>{task.points_reward} Points</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-slate-400 text-sm">
-                    <Clock size={16} />
-                    <span>{task.timer || 30}s</span>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-slate-50 p-6 flex items-center justify-center sm:border-l">
-                {activeTask?.id === task.id ? (
-                  <Button 
-                    onClick={() => handleCompleteTask(task)}
-                    disabled={activeTask.timeLeft > 0 || !!completing}
-                    className={`w-full sm:w-auto ${activeTask.timeLeft === 0 ? 'bg-emerald-600 hover:bg-emerald-700 animate-bounce' : ''}`}
-                  >
-                    {completing === task.id ? <Loader2 className="animate-spin mr-2" size={16} /> : null}
-                    {activeTask.timeLeft > 0 ? `Wait ${activeTask.timeLeft}s` : 'Claim Reward'}
-                    {activeTask.timeLeft === 0 && <CheckCircle2 size={16} className="ml-2" />}
-                  </Button>
-                ) : (
-                  <Button 
-                    onClick={() => startTask(task)}
-                    disabled={!!completing || (!!activeTask && activeTask.id !== task.id)}
-                    className="w-full sm:w-auto"
-                  >
-                    Start Task
-                    <ExternalLink size={16} className="ml-2" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          </Card>
+        {tasks.slice(0, 2).map((task) => (
+          <TaskCard 
+            key={task.id} 
+            task={task} 
+            activeTask={activeTask} 
+            completing={completing} 
+            startTask={startTask} 
+            handleCompleteTask={handleCompleteTask} 
+          />
+        ))}
+        
+        {tasks.length > 0 && (
+          <div className="py-2">
+            <AdUnit code={settings.ad_banner_728x90 || settings.ad_square_300x250 || settings.ad_banner_320x50 || settings.clickadilla_banner} />
+          </div>
+        )}
+
+        {tasks.slice(2, 5).map((task) => (
+          <TaskCard 
+            key={task.id} 
+            task={task} 
+            activeTask={activeTask} 
+            completing={completing} 
+            startTask={startTask} 
+            handleCompleteTask={handleCompleteTask} 
+          />
+        ))}
+
+        {tasks.length > 5 && (
+          <div className="py-1">
+            <AdUnit code={settings.ad_banner_728x90 || settings.clickadilla_banner} />
+          </div>
+        )}
+
+        {tasks.slice(5).map((task) => (
+          <TaskCard 
+            key={task.id} 
+            task={task} 
+            activeTask={activeTask} 
+            completing={completing} 
+            startTask={startTask} 
+            handleCompleteTask={handleCompleteTask} 
+          />
         ))}
       </div>
 

@@ -122,6 +122,12 @@ export default function MathQuiz() {
       generateProblem();
     } else {
       setLastResult('wrong');
+      // Decrease health on wrong answer
+      if (user) {
+        updateUser({
+          profile_health: Math.max(0, (user.profile_health ?? 100) - 5)
+        }).catch(console.error);
+      }
       handleGameOver();
     }
   };
@@ -141,8 +147,7 @@ export default function MathQuiz() {
         </div>
       </header>
 
-      <AdUnit code={settings.ad_banner_728x90} className="my-6 min-h-[90px]" minimal hideLabel />
-      <AdUnit code={settings.ad_banner_468x60} className="my-2" />
+      <AdUnit code={settings.ad_banner_728x90} className="my-6" minimal hideLabel />
 
       {!isPlaying ? (
         <Card className="border-2 border-blue-100 shadow-xl overflow-hidden">
@@ -228,8 +233,7 @@ export default function MathQuiz() {
         </motion.div>
       )}
       <div className="flex justify-center items-center flex-col gap-4 mt-8">
-        <AdUnit code={settings.ad_square_300x250} />
-        <AdUnit code={settings.ad_native_bottom} className="w-full" />
+        <AdUnit code={settings.ad_square_300x250 || settings.clickadilla_native} />
       </div>
     </div>
   );
