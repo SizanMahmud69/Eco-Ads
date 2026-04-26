@@ -26,9 +26,16 @@ export interface GameSettings {
   ad_banner_728x90?: string;
   ad_banner_468x60?: string;
   ad_banner_320x50?: string;
+  ad_banner_160x600?: string;
   ad_square_300x250?: string;
   ad_native_top?: string;
   ad_native_bottom?: string;
+  clickadilla_banner?: string;
+  clickadilla_popunder?: string;
+  clickadilla_native?: string;
+  clickadilla_instream?: string;
+  watch_ads_points: number;
+  watch_ads_cooldown: number;
   registrations_enabled: boolean;
   bkash_number: string;
   nagad_number: string;
@@ -58,9 +65,16 @@ const defaultSettings: GameSettings = {
   ad_banner_728x90: '',
   ad_banner_468x60: '',
   ad_banner_320x50: '',
+  ad_banner_160x600: '',
   ad_square_300x250: '',
   ad_native_top: '',
   ad_native_bottom: '',
+  clickadilla_banner: '',
+  clickadilla_popunder: '',
+  clickadilla_native: '',
+  clickadilla_instream: '',
+  watch_ads_points: 20,
+  watch_ads_cooldown: 5,
   registrations_enabled: true,
   bkash_number: '01700000000',
   nagad_number: '01700000000',
@@ -73,9 +87,17 @@ export const useGameSettings = () => {
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'game_points'), (snapshot) => {
-      if (snapshot.exists()) {
-        setSettings({ ...defaultSettings, ...snapshot.data() });
+      try {
+        if (snapshot.exists()) {
+          setSettings({ ...defaultSettings, ...snapshot.data() });
+        }
+      } catch (err) {
+        console.error("Error processing settings snapshot:", err);
+      } finally {
+        setLoading(false);
       }
+    }, (error) => {
+      console.error("Error listening to settings:", error);
       setLoading(false);
     });
 
