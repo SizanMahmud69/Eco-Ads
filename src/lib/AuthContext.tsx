@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, limit } from 'firebase/firestore';
+import { toast } from 'sonner';
 
 interface User {
   uid: string;
@@ -23,6 +24,9 @@ interface User {
   referrals_count?: number;
   referral_milestone_rewarded?: boolean;
   multiplier?: number;
+  is_frozen?: boolean;
+  is_banned?: boolean;
+  profile_health?: number;
   daily_plays?: {
     spin?: number;
     scratch?: number;
@@ -31,6 +35,7 @@ interface User {
     captcha?: number;
     color_match?: number;
     number_memory?: number;
+    watch_ads?: number;
   };
   last_play_reset_at?: string | null;
 }
@@ -70,8 +75,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         unsubscribeDoc = onSnapshot(userRef, async (docSnap) => {
           if (docSnap.exists()) {
-            const userData = docSnap.data() as User;
+            const userData = docSnap.data() as any;
             
+            // Check for ban status
+            if (userData.is_banned) {
+              await signOut(auth);
+              toast.error('Your account has been permanently banned.');
+              setLoading(false);
+              return;
+            }
+
             // Daily plays reset logic
             const today = new Date().toISOString().split('T')[0];
             if (userData.last_play_reset_at !== today) {
@@ -83,7 +96,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   word_guess: 0,
                   captcha: 0,
                   color_match: 0,
-                  number_memory: 0
+                  number_memory: 0,
+                  watch_ads: 0
                 },
                 last_play_reset_at: today
               }, { merge: true });
@@ -145,7 +159,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 word_guess: 0,
                 captcha: 0,
                 color_match: 0,
-                number_memory: 0
+                number_memory: 0,
+                watch_ads: 0
               },
               last_play_reset_at: new Date().toISOString().split('T')[0]
             };
@@ -228,7 +243,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           word_guess: 0,
           captcha: 0,
           color_match: 0,
-          number_memory: 0
+          number_memory: 0,
+          watch_ads: 0
         },
         last_play_reset_at: new Date().toISOString().split('T')[0]
       };

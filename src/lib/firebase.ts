@@ -58,24 +58,17 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
+  const errInfo: any = {
     error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  
+  if (errInfo.error.includes('insufficient permissions')) {
+    console.warn(`[Firestore Permission Denied]: ${operationType} on ${path}. This is expected if the user doesn't have access.`);
+  } else if (errInfo.error.includes('index')) {
+    console.error(`[Firestore Index Error]: ${operationType} on ${path}. This query requires a composite index. Details:`, error);
+  } else {
+    console.error(`[Firestore Error]: ${operationType} on ${path}:`, error);
+  }
 }
