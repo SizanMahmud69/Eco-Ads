@@ -122,11 +122,21 @@
     @apply border-border outline-ring/50;
     }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground overflow-x-hidden;
+    min-height: 100dvh;
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
     }
   html {
-    @apply font-sans;
+    @apply font-sans overflow-x-hidden;
+    height: 100%;
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
     }
+}
+
+.safe-area-pb {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
 }
 
 /* Adsterra Ad Optimization */

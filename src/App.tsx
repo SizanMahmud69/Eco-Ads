@@ -337,6 +337,37 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
     return () => clearInterval(intervalId);
   }, [isAdmin]);
 
+  // Zoom Prevention Logic
+  React.useEffect(() => {
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && (e.key === '=' || e.key === '-' || e.key === '0' || e.key === '+')) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('touchstart', handleTouchStart, { passive: false });
+    document.addEventListener('wheel', handleWheel, { passive: false });
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('wheel', handleWheel);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-emerald-50/20 flex flex-col pt-0">
       {/* Global Ads (Floating/Overlay) */}
@@ -355,7 +386,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       />
       
       {/* Top Bar */}
-      <header className="bg-white border-b px-4 py-3 flex items-center justify-between sticky top-0 z-50">
+      <header className="fixed top-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-b px-4 py-3 flex items-center justify-between z-[110] shadow-sm">
         <Link to="/" className="flex items-center gap-2">
           <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
             <Leaf size={24} />
@@ -374,8 +405,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         </div>
       </header>
 
-      <main className="flex-1 pb-24 sm:pb-0 sm:pl-64 flex flex-col">
-        <div className="max-w-4xl w-full mx-auto p-4 sm:p-8 flex-1 flex flex-col">
+      <main className="flex-1 pt-16 pb-24 sm:pb-0 sm:pl-64 flex flex-col relative w-full overflow-x-hidden">
+        <div className="max-w-4xl w-full mx-auto p-4 sm:p-8 flex-1 flex flex-col w-full">
           <div className="flex-1">
             <PageTransition key={useLocation().pathname}>
               {children}
@@ -386,8 +417,8 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
       </main>
 
       {/* Sidebar / Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white border-t flex justify-around p-2 sm:top-16 sm:left-0 sm:bottom-0 sm:w-64 sm:flex-col sm:justify-start sm:gap-2 sm:p-4 sm:border-r sm:border-t-0 z-40">
-        <NavLink to="/" icon={<Home size={20} />} label="Dashboard" />
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-2xl border-t flex justify-around p-2 sm:top-16 sm:left-0 sm:bottom-0 sm:w-64 sm:flex-col sm:justify-start sm:gap-2 sm:p-4 sm:border-r sm:border-t-0 z-[100] transition-all safe-area-pb shadow-[0_-5px_25px_rgba(0,0,0,0.05)]">
+        <NavLink to="/" icon={<Home size={22} />} label="Dashboard" />
         <NavLink to="/eco" icon={<Leaf size={20} />} label="Eco" />
         <NavLink to="/upgrade" icon={<Zap size={20} />} label="Upgrade" />
         <NavLink to="/refer" icon={<Users size={20} />} label="Refer" />
