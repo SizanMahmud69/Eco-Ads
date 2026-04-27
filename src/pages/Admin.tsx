@@ -445,8 +445,6 @@ export default function Admin() {
       return;
     }
 
-    if (!confirm(`Are you sure you want to send this notification to ${isSpecific ? `${targetUsers.length} selected user(s)` : `ALL ${users.length} users`}?`)) return;
-
     setBroadcasting(true);
     try {
       // Firestore batches are limited to 500 operations

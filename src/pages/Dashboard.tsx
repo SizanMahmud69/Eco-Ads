@@ -274,7 +274,7 @@ export default function Dashboard() {
   }, [user?.uid, settings.daily_point_limit]);
 
   return (
-    <div className="space-y-6 md:space-y-8 pb-12 overflow-x-hidden w-full max-w-full px-1">
+    <div className="space-y-6 md:space-y-8 pb-4 overflow-x-hidden w-full max-w-full px-1">
       <ReferralPopup 
         isOpen={showReferralPopup} 
         onClose={() => setShowReferralPopup(false)} 
