@@ -253,7 +253,7 @@ export const AdUnit: React.FC<AdUnitProps> = ({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 200, opacity: 0 }}
             transition={{ type: "spring", damping: 20, stiffness: 100, delay: 0.8 }}
-            className="fixed bottom-16 left-0 right-0 z-[99999] flex justify-center pointer-events-none"
+            className="fixed bottom-24 left-0 right-0 z-[80] flex justify-center pointer-events-none"
           >
             <div className="relative pointer-events-auto group w-fit">
               <AnimatePresence>
