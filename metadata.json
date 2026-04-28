@@ -1,5 +1,5 @@
 {
   "name": "Eco Ads",
   "description": "A micro-income app where users can earn points through spin, scratch, and daily tasks, with withdrawal options via bKash, Nagad, and Rocket.",
-  "requestFramePermissions": ["camera"]
+  "requestFramePermissions": []
 }

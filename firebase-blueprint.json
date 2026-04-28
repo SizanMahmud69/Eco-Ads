@@ -9,6 +9,9 @@
         "username": { "type": "string", "description": "Display name" },
         "points": { "type": "number", "description": "Current points balance" },
         "is_premium": { "type": "boolean", "description": "Premium status" },
+        "premium_expiry": { "type": "string", "format": "date-time", "description": "ISO timestamp when premium expires" },
+        "planId": { "type": "string", "description": "ID of the current plan" },
+        "planName": { "type": "string", "description": "Name of the current plan" },
         "last_spin_at": { "type": "string", "format": "date-time", "description": "Last spin timestamp" },
         "last_scratch_at": { "type": "string", "format": "date-time", "description": "Last scratch timestamp" },
         "last_daily_at": { "type": "string", "format": "date-time", "description": "Last daily check-in timestamp" },
@@ -162,6 +165,18 @@
       },
       "required": ["userId", "title", "message", "type", "read", "created_at"]
     },
+    "VideoAd": {
+      "title": "VideoAd",
+      "description": "Video ad links for Watch & Earn",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string", "description": "YouTube or Facebook video URL" },
+        "title": { "type": "string", "description": "Video title" },
+        "points": { "type": "number", "description": "Points reward for this video" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["url", "title", "points"]
+    },
     "Settings": {
       "title": "Settings",
       "description": "Global application settings and game points",
@@ -228,6 +243,10 @@
     "/notifications/{notificationId}": {
       "schema": "Notification",
       "description": "User notifications"
+    },
+    "/video_ads/{adId}": {
+      "schema": "VideoAd",
+      "description": "Video ads for Watch & Earn"
     },
     "/settings/{settingId}": {
       "schema": "Settings",

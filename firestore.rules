@@ -173,6 +173,11 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    match /video_ads/{adId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
     match /scanned_codes/{codeId} {
       allow get: if isAuthenticated();
       allow create: if isAuthenticated() && 
