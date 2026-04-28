@@ -57,11 +57,15 @@ export const SpinWheel: React.FC<SpinWheelProps> = ({ onSpin, disabled, segments
     setWinner(points);
     
     // Visual feedback
+    // User requested animation: "paper cards red blue yellow green paper like top from bottom falling"
     confetti({
       particleCount: 150,
       spread: 80,
-      origin: { y: 0.6 },
-      colors: segments.map(s => s.color)
+      origin: { y: 0.1 }, 
+      colors: segments.map(s => s.color),
+      gravity: 0.8,
+      scalar: 1.2,
+      ticks: 300
     });
 
     // Pulse the pointer

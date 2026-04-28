@@ -86,24 +86,12 @@ export const NotificationCenter: React.FC = () => {
   useEffect(() => {
     if (!user) return;
 
-    const checkAvailability = () => {
-      const now = Date.now();
-      const lastSpin = user.last_spin_at ? new Date(user.last_spin_at).getTime() : 0;
-      const lastScratch = user.last_scratch_at ? new Date(user.last_scratch_at).getTime() : 0;
-      
-      const hourInMs = 60 * 60 * 1000;
-      
-      if (lastSpin > 0 && (now - lastSpin) >= hourInMs) {
-        sendLocalNotification('Spin & Win is Ready!', 'Your hourly spin is now available. Try your luck!', 'success', '/spin');
-      }
-
-      if (lastScratch > 0 && (now - lastScratch) >= hourInMs) {
-        sendLocalNotification('Scratch Card is Ready!', 'Get your guaranteed points now!', 'success', '/scratch');
-      }
-    };
-
-    const sendLocalNotification = async (title: string, message: string, type: 'info' | 'success' | 'alert', link?: string) => {
-      const recent = notifications.find(n => n.title === title && Date.now() - (n.created_at?.toMillis?.() || Date.now()) < 3600000);
+    const sendLocalNotification = async (title: string, message: string, type: 'info' | 'success' | 'alert', link?: string, lastActivityAt?: string | null) => {
+      const activityTime = lastActivityAt ? new Date(lastActivityAt).getTime() : 0;
+      const recent = notificationsRef.current.find(n => n.title === title && (
+        (n.created_at?.toMillis ? n.created_at.toMillis() : new Date(n.created_at).getTime()) > activityTime ||
+        Date.now() - (n.created_at?.toMillis?.() || Date.now()) < 3600000
+      ));
       if (recent) return;
 
       try {
@@ -118,6 +106,22 @@ export const NotificationCenter: React.FC = () => {
         });
       } catch (err) {
         console.error("Local notify error:", err);
+      }
+    };
+
+    const checkAvailability = () => {
+      const now = Date.now();
+      const lastSpin = user.last_spin_at ? new Date(user.last_spin_at).getTime() : 0;
+      const lastScratch = user.last_scratch_at ? new Date(user.last_scratch_at).getTime() : 0;
+      
+      const hourInMs = 60 * 60 * 1000;
+      
+      if (lastSpin > 0 && (now - lastSpin) >= hourInMs) {
+        sendLocalNotification('Spin & Win is Ready!', 'Your hourly spin is now available. Try your luck!', 'success', '/spin', user.last_spin_at);
+      }
+
+      if (lastScratch > 0 && (now - lastScratch) >= hourInMs) {
+        sendLocalNotification('Scratch Card is Ready!', 'Get your guaranteed points now!', 'success', '/scratch', user.last_scratch_at);
       }
     };
 

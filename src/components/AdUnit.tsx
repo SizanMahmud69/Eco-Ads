@@ -166,23 +166,32 @@ export const AdUnit: React.FC<AdUnitProps> = ({
                 ${code}
               </div>
               <script>
-                // Report height back to parent with unique ID
-                function reportHeight() {
-                  const height = document.body.offsetHeight || document.documentElement.scrollHeight;
+                // Report size back to parent with unique ID
+                function reportSize() {
+                  const body = document.body;
+                  const html = document.documentElement;
+                  
+                  // Try to get the actual content dimensions
+                  const width = Math.max(body.scrollWidth, body.offsetWidth, html.clientWidth, html.scrollWidth, html.offsetWidth);
+                  const height = Math.max(body.scrollHeight, body.offsetHeight, html.clientHeight, html.scrollHeight, html.offsetHeight);
+                  
                   if (height > 0) {
                     window.parent.postMessage({ 
                       type: 'AD_RESIZE', 
                       height: height, 
+                      width: width,
                       id: 'ad-frame-${uid}' 
                     }, '*');
                   }
                 }
-                window.onload = reportHeight;
+                window.onload = reportSize;
+                window.onresize = reportSize;
+                
                 // Poll for a bit as some ads load late
                 let attempts = 0;
                 const poll = setInterval(() => {
-                  reportHeight();
-                  if (++attempts > 10) clearInterval(poll);
+                  reportSize();
+                  if (++attempts > 20) clearInterval(poll);
                 }, 1000);
               </script>
             </body>
@@ -207,20 +216,21 @@ export const AdUnit: React.FC<AdUnitProps> = ({
     };
   }, [code, uid, isFixedAd, isVisible, isAdminPanel, isAdmin]);
 
-  // Handle iframe height messages to prevent clipping
+  // Handle iframe resize messages
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const data = event.data;
       if (data && data.type === 'AD_RESIZE' && data.id === `ad-frame-${uid}` && adRef.current) {
         const iframe = adRef.current.querySelector('iframe');
         if (iframe) {
-          iframe.style.height = data.height + 'px';
+          if (data.height) iframe.style.height = data.height + 'px';
+          if (data.width && !isVideoAd) iframe.style.width = data.width + 'px';
         }
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [uid]);
+  }, [uid, isVideoAd]);
 
   if (!code || !isVisible || isAdminPanel || isAdmin) {
     // Aggressively try to hide any global ad elements if in admin panel
@@ -253,9 +263,9 @@ export const AdUnit: React.FC<AdUnitProps> = ({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 200, opacity: 0 }}
             transition={{ type: "spring", damping: 20, stiffness: 100, delay: 0.8 }}
-            className="fixed bottom-24 left-0 right-0 z-[80] flex justify-center pointer-events-none"
+            className="fixed bottom-24 left-0 right-0 z-[120] flex justify-center pointer-events-none px-4"
           >
-            <div className="relative pointer-events-auto group w-fit">
+            <div className="relative pointer-events-auto group max-w-full">
               <AnimatePresence>
                 {showCloseButton && (
                   <>
@@ -267,19 +277,19 @@ export const AdUnit: React.FC<AdUnitProps> = ({
                         e.stopPropagation();
                         setIsVisible(false);
                       }}
-                      className="absolute -top-3 -right-3 bg-red-500/90 text-white rounded-full p-1 shadow-xl hover:bg-red-600 active:scale-95 transition-all z-[100000] border-2 border-white opacity-0 group-hover:opacity-100 backdrop-blur-sm"
+                      className="absolute -top-3 -right-3 bg-red-600 text-white rounded-full p-1.5 shadow-2xl hover:bg-red-700 active:scale-95 transition-all z-[130] border-2 border-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100 backdrop-blur-md"
                       title="Close Ad"
                     >
-                      <X size={12} strokeWidth={4} />
+                      <X size={14} strokeWidth={4} />
                     </motion.button>
                   </>
                 )}
               </AnimatePresence>
               
-              <div className="flex flex-col items-center bg-white/10 dark:bg-black/10 backdrop-blur-xl rounded-lg overflow-hidden shadow-[0_4px_24px_rgba(0,0,0,0.25)] border border-white/20 dark:border-white/5 mx-auto min-h-0 h-fit">
+              <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl rounded-2xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.3)] border border-white/20 dark:border-white/5 mx-auto w-fit max-w-[95vw] transition-all duration-300">
                 <div 
                   ref={adRef} 
-                  className={`flex justify-center ad-content-isolated ${isVideoAd ? 'w-full min-h-[180px]' : 'w-fit h-fit min-h-0'}`} 
+                  className={`flex justify-center transition-all duration-300 ad-content-isolated ${isVideoAd ? 'w-full min-h-[180px]' : 'w-fit h-fit min-h-[50px] min-w-[50px]'}`}
                 />
               </div>
               
@@ -287,9 +297,9 @@ export const AdUnit: React.FC<AdUnitProps> = ({
               {showCloseButton && (
                 <button 
                   onClick={() => setIsVisible(false)}
-                  className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-slate-900/60 backdrop-blur-sm flex items-center justify-center group-hover:hidden transition-opacity shadow-lg border border-white/20"
+                  className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-slate-900/80 backdrop-blur-md flex items-center justify-center sm:group-hover:hidden transition-opacity shadow-xl border border-white/20 z-[125]"
                 >
-                  <X size={10} className="text-white" />
+                  <X size={12} className="text-white" strokeWidth={3} />
                 </button>
               )}
             </div>
