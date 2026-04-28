@@ -199,18 +199,57 @@ const AppFooter = ({ dark = false }: { dark?: boolean }) => {
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAdmin, loading, logout } = useAuth();
+  const { settings } = useGameSettings();
   const [maintenance, setMaintenance] = React.useState(false);
+  const [progress, setProgress] = React.useState(88);
 
   React.useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'game_points'), (docSnap) => {
       if (docSnap.exists()) {
-        setMaintenance(docSnap.data().maintenance_mode === true);
+        const data = docSnap.data();
+        setMaintenance(data.maintenance_mode === true);
+        
+        // Calculate initial progress
+        if (data.maintenance_mode && data.maintenance_start_at && data.maintenance_duration) {
+          const start = new Date(data.maintenance_start_at).getTime();
+          const durationMs = data.maintenance_duration * 60 * 60 * 1000;
+          const now = Date.now();
+          const elapsed = now - start;
+          
+          let p = Math.floor((elapsed / durationMs) * 100);
+          if (p < 0) p = 0;
+          if (p > 99) p = 99;
+          setProgress(p);
+        } else {
+          setProgress(88);
+        }
       }
     }, (error) => {
       console.error("Error listening to maintenance status:", error);
     });
     return () => unsub();
   }, []);
+
+  // Update progress every minute if in maintenance
+  React.useEffect(() => {
+    if (!maintenance || isAdmin) return;
+    
+    const interval = setInterval(() => {
+      if (settings.maintenance_start_at && settings.maintenance_duration) {
+        const start = new Date(settings.maintenance_start_at).getTime();
+        const durationMs = settings.maintenance_duration * 60 * 60 * 1000;
+        const now = Date.now();
+        const elapsed = now - start;
+        
+        let p = Math.floor((elapsed / durationMs) * 100);
+        if (p < 0) p = 0;
+        if (p > 99) p = 99;
+        setProgress(p);
+      }
+    }, 60000);
+
+    return () => clearInterval(interval);
+  }, [maintenance, isAdmin, settings.maintenance_start_at, settings.maintenance_duration]);
 
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white">
@@ -233,30 +272,101 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
       </div>
     </div>
   );
-  if (!user) return <Navigate to="/login" />;
+  if (!user) return <Navigate to="/login" replace />;
   
   if (maintenance && !isAdmin) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
-        <div className="w-20 h-20 bg-amber-100 rounded-3xl flex items-center justify-center text-amber-600 mb-6">
-          <AlertTriangle size={40} />
-        </div>
-        <h1 className="text-2xl font-black text-slate-900 mb-2">Maintenance Mode</h1>
-        <p className="text-slate-500 max-w-xs mb-8">
-          We are currently performing some system updates. Please check back later!
-        </p>
-        <div className="w-full max-w-xs p-4 bg-white rounded-2xl border border-slate-200 shadow-sm mb-6">
-          <p className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-1">Status</p>
-          <p className="text-emerald-600 font-black">Updating Servers...</p>
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0c] p-6 text-center overflow-hidden">
+        {/* Computer & Coding Animation */}
+        <div className="relative mb-12 transform hover:scale-105 transition-transform duration-500">
+          {/* Monitor Stand */}
+          <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 w-16 h-8 bg-slate-800 rounded-b-xl" />
+          <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 w-24 h-2 bg-slate-700 rounded-full" />
+          
+          {/* Monitor Frame */}
+          <div className="relative w-64 h-48 sm:w-80 sm:h-56 bg-slate-900 rounded-2xl p-2.5 shadow-2xl shadow-emerald-500/10 border-2 border-slate-800">
+            {/* Screen */}
+            <div className="w-full h-full bg-[#1e1e1e] rounded-xl overflow-hidden relative border border-slate-800 flex flex-col items-start p-3 font-mono text-[10px] leading-relaxed select-none">
+              <div className="flex gap-1.5 mb-2">
+                <div className="w-2 h-2 rounded-full bg-red-500/50" />
+                <div className="w-2 h-2 rounded-full bg-amber-500/50" />
+                <div className="w-2 h-2 rounded-full bg-emerald-500/50" />
+              </div>
+              
+              <div className="w-full h-full overflow-hidden text-left space-y-1">
+                {[...Array(12)].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: -10 }}
+                    animate={{ opacity: [0.3, 1, 0.3], x: 0 }}
+                    transition={{ 
+                      duration: 2, 
+                      repeat: Infinity, 
+                      delay: i * 0.15,
+                      repeatDelay: 1
+                    }}
+                    className="flex gap-2"
+                  >
+                    <span className="text-slate-600 tabular-nums">{(i + 1).toString().padStart(2, '0')}</span>
+                    <span className={i % 3 === 0 ? "text-emerald-400" : i % 3 === 1 ? "text-blue-400" : "text-purple-400"}>
+                      {i % 4 === 0 ? "function deploy() {" : 
+                       i % 4 === 1 ? "  optimizing_assets();" : 
+                       i % 4 === 2 ? "  security_scan: OK;" : 
+                       "}"}
+                    </span>
+                  </motion.div>
+                ))}
+              </div>
+
+              {/* Cursor Overlay */}
+              <motion.div 
+                animate={{ opacity: [1, 0, 1] }} 
+                transition={{ duration: 0.8, repeat: Infinity }}
+                className="absolute bottom-4 left-16 w-2 h-4 bg-emerald-500/50" 
+              />
+              
+              {/* Screen Glow */}
+              <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/5 to-transparent pointer-events-none" />
+            </div>
+            
+            {/* Logo/Indicator */}
+            <div className="absolute bottom-1 right-3 text-[8px] font-black text-slate-700 tracking-tighter italic">ECO TECH</div>
+            <div className="absolute bottom-1.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
+          </div>
         </div>
 
-        <button 
-          onClick={() => logout()}
-          className="flex items-center gap-2 text-slate-500 hover:text-red-600 font-bold transition-colors py-2 px-4 rounded-xl hover:bg-red-50"
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative z-10"
         >
-          <LogOut size={18} />
-          Sign Out
-        </button>
+          <h1 className="text-3xl font-black text-white mb-2 tracking-tight">System <span className="text-emerald-500">Upgrade</span></h1>
+          <p className="text-slate-400 max-w-sm mb-10 leading-relaxed font-medium">
+            {settings.maintenance_message || "We're currently optimizing our systems to provide a smoother experience. We'll be back shortly!"}
+          </p>
+          
+          <div className="flex flex-col items-center gap-6">
+            <div className="px-6 py-2 bg-slate-900/50 border border-slate-800 rounded-full flex items-center gap-3">
+              <div className="flex gap-1">
+                <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1 }} className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0.2 }} className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 1, delay: 0.4 }} className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+              </div>
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Progress: {progress}%</span>
+            </div>
+
+            <button 
+              onClick={() => logout()}
+              className="group flex items-center gap-2 text-slate-500 hover:text-white font-bold transition-all py-3 px-8 rounded-2xl bg-white/5 hover:bg-red-500/10 border border-white/5 hover:border-red-500/20"
+            >
+              <LogOut size={18} className="group-hover:translate-x-1 transition-transform" />
+              Sign Out
+            </button>
+          </div>
+        </motion.div>
+
+        {/* Ambient Glow */}
+        <div className="fixed -bottom-40 left-1/2 -translate-x-1/2 w-[600px] h-80 bg-emerald-500/10 blur-[120px] rounded-full pointer-events-none" />
       </div>
     );
   }
@@ -287,7 +397,7 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
       </div>
     </div>
   );
-  return user && isAdmin ? <>{children}</> : <Navigate to="/admin-login" />;
+  return user && isAdmin ? <>{children}</> : <Navigate to="/admin-login" replace />;
 };
 
 const Layout = ({ children }: { children: React.ReactNode }) => {
