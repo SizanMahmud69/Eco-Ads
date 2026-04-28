@@ -128,9 +128,6 @@ export default function Login() {
             <Link to="/terms-conditions" className="hover:text-emerald-600 transition-colors">Terms of Service</Link>
           </div>
         </CardContent>
-        <CardFooter className="flex flex-col gap-2 pb-6">
-          <Link to="/admin-login" className="text-xs text-slate-400 hover:text-emerald-600 transition-colors font-medium">Admin Access</Link>
-        </CardFooter>
       </Card>
       <AdUnit code={settings.ad_native_bottom} className="max-w-md w-full" />
     </div>

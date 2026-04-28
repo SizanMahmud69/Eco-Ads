@@ -10,18 +10,42 @@ import { motion, AnimatePresence } from 'motion/react';
 import { AdUnit } from '@/components/AdUnit';
 import { useGameSettings } from '@/hooks/useGameSettings';
 
+import confetti from 'canvas-confetti';
+
 export default function WatchAds() {
   const { user, updateUser } = useAuth();
   const { settings } = useGameSettings();
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
+  const [videoAds, setVideoAds] = useState<any[]>([]);
+  const [currentVideo, setCurrentVideo] = useState<any>(null);
   const [adStarted, setAdStarted] = useState(false);
   const [cooldown, setCooldown] = useState(0);
-  const adContainerRef = useRef<HTMLDivElement>(null);
+  const [videoEnded, setVideoEnded] = useState(false);
 
-  const rewardPoints = settings.watch_ads_points || 20;
   const dailyLimit = settings.daily_game_limit || 10;
   const cooldownMinutes = settings.watch_ads_cooldown || 5;
+
+  // Fetch Video Ads from Admin collection
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'video_ads'), (snapshot) => {
+      const ads = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setVideoAds(ads);
+    }, (error) => {
+      console.error("Error fetching video ads:", error);
+      // No toast here to avoid spam, but we should handle it
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Cooldown timer countdown
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
   useEffect(() => {
     if (!user) return;
@@ -30,29 +54,40 @@ export default function WatchAds() {
       collection(db, 'history'),
       where('userId', '==', user.uid),
       where('type', '==', 'watch_ads'),
-      orderBy('created_at', 'desc'),
-      limit(10)
+      limit(20)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const rawData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      
+      // Sort in-memory to avoid index requirement
+      const data = rawData.sort((a: any, b: any) => {
+        const getTime = (val: any) => {
+          if (!val) return 0;
+          if (val.seconds !== undefined) return val.seconds * 1000;
+          if (typeof val.toMillis === 'function') return val.toMillis();
+          return new Date(val).getTime() || 0;
+        };
+        return getTime(b.created_at) - getTime(a.created_at);
+      }).slice(0, 10);
+
       setHistory(data);
       
       if (data.length > 0) {
         const rawDate = (data[0] as any).created_at;
-        let lastAd = 0;
+        let lastAdTime = 0;
         if (rawDate) {
           if (rawDate.seconds !== undefined) {
-            lastAd = rawDate.seconds * 1000;
+            lastAdTime = rawDate.seconds * 1000;
           } else if (typeof rawDate.toMillis === 'function') {
-            lastAd = rawDate.toMillis();
+            lastAdTime = rawDate.toMillis();
           } else {
-            lastAd = new Date(rawDate).getTime();
+            lastAdTime = new Date(rawDate).getTime();
           }
         }
         
         const now = Date.now();
-        const diff = now - lastAd;
+        const diff = now - lastAdTime;
         const cooldownMs = cooldownMinutes * 60 * 1000;
         if (diff < cooldownMs) {
           setCooldown(Math.ceil((cooldownMs - diff) / 1000));
@@ -69,6 +104,24 @@ export default function WatchAds() {
     return () => unsubscribe();
   }, [user, cooldownMinutes]);
 
+  // Determine next video to watch sequentially
+  useEffect(() => {
+    if (videoAds.length === 0 || !user) return;
+    
+    // Simple sequential logic: get the last watched video ID from history
+    const lastWatchedId = history[0]?.videoId;
+    let nextIndex = 0;
+    
+    if (lastWatchedId) {
+      const lastIndex = videoAds.findIndex(v => v.id === lastWatchedId);
+      if (lastIndex !== -1) {
+        nextIndex = (lastIndex + 1) % videoAds.length;
+      }
+    }
+    
+    setCurrentVideo(videoAds[nextIndex]);
+  }, [videoAds, history, user]);
+
   useEffect(() => {
     let timer: NodeJS.Timeout;
     if (cooldown > 0) {
@@ -79,80 +132,63 @@ export default function WatchAds() {
     return () => clearInterval(timer);
   }, [cooldown]);
 
-  const handleWatchAd = () => {
+  const getEmbedUrl = (url: string) => {
+    if (!url) return '';
+    
+    // YouTube
+    if (url.includes('youtube.com') || url.includes('youtu.be')) {
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+      const match = url.match(regExp);
+      const id = (match && match[2].length === 11) ? match[2] : null;
+      return id ? `https://www.youtube.com/embed/${id}?autoplay=1&rel=0` : url;
+    }
+    
+    // Facebook
+    if (url.includes('facebook.com')) {
+      return `https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(url)}&show_text=0&autoplay=1`;
+    }
+    
+    return url;
+  };
+
+  // Handle selection of a specific video
+  const handleSelectVideo = (video: any) => {
     if (cooldown > 0) {
       toast.error(`Please wait ${Math.floor(cooldown / 60)}m ${cooldown % 60}s before next video`);
       return;
     }
     
-    if (!settings.clickadilla_instream) {
-      toast.error('No video ads available at the moment.');
+    if (currentPlays >= dailyLimit) {
+      toast.error('You have reached your daily limit for video ads.');
       return;
     }
 
+    setCurrentVideo(video);
     setAdStarted(true);
+    setVideoEnded(false);
     setLoading(true);
 
-    // We simulate ad completion after 32 seconds (typical video ad duration)
-    const timer = setTimeout(() => {
-      completeAd();
-    }, 32000);
+    // Simulate video watching completion (30 seconds)
+    const timeout = setTimeout(() => {
+      setVideoEnded(true);
+      setLoading(false);
+    }, 30000);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(timeout);
   };
 
-  // Video Ad Injection Effect - Executes only when adStarted is true and container is ready
-  useEffect(() => {
-    if (adStarted && settings.clickadilla_instream && adContainerRef.current) {
-      const container = adContainerRef.current;
-      container.innerHTML = '';
-      
-      try {
-        const range = document.createRange();
-        range.setStart(container, 0);
-        const fragment = range.createContextualFragment(settings.clickadilla_instream);
-        container.appendChild(fragment);
-        
-        // Execute scripts manually
-        const scripts = container.querySelectorAll('script');
-        scripts.forEach(oldScript => {
-          const newScript = document.createElement('script');
-          Array.from(oldScript.attributes).forEach(attr => newScript.setAttribute(attr.name, attr.value));
-          newScript.innerHTML = oldScript.innerHTML;
-          if (oldScript.src) {
-            newScript.src = oldScript.src;
-            newScript.async = true;
-          }
-          newScript.setAttribute('data-video-ad', 'true');
-          
-          // Clickadilla and major ad networks often need scripts in the body or head to initialize correctly
-          // but we keep a copy in the container if it's a specific UI-binding script
-          if (oldScript.src) {
-            document.body.appendChild(newScript);
-          } else {
-            container.appendChild(newScript);
-          }
-        });
-
-        return () => {
-          document.querySelectorAll('script[data-video-ad="true"]').forEach(s => s.remove());
-        };
-      } catch (err) {
-        console.error("Ad injection failed:", err);
-      }
-    }
-  }, [adStarted, settings.clickadilla_instream]);
-
   const completeAd = async () => {
-    if (!user) return;
+    if (!user || !currentVideo) return;
     try {
-      const reward = Math.floor(rewardPoints * (user.multiplier || 1));
+      const reward = Math.floor((currentVideo.points || 20) * (user.multiplier || 1));
       
       await addDoc(collection(db, 'history'), {
         userId: user.uid,
         type: 'watch_ads',
         points: reward,
-        description: 'Watch Ads: Video ad completed',
+        videoId: currentVideo.id,
+        videoTitle: currentVideo.title,
+        description: `Watched Video: ${currentVideo.title}`,
         created_at: serverTimestamp()
       });
 
@@ -164,13 +200,23 @@ export default function WatchAds() {
         }
       });
 
-      toast.success(`Congratulations! You earned ${reward} points.`);
+      confetti({
+        particleCount: 150,
+        spread: 80,
+        origin: { y: 0.2 },
+        colors: ['#FF6B6B', '#4ECDC4', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'],
+        gravity: 0.8,
+        scalar: 1.2,
+        ticks: 300
+      });
+
+      toast.success(`Way to go! You earned ${reward} points.`);
+      setAdStarted(false);
+      setVideoEnded(false);
+      setCurrentVideo(null);
     } catch (error) {
       console.error("Error saving ad reward:", error);
       toast.error('Failed to save reward');
-    } finally {
-      setAdStarted(false);
-      setLoading(false);
     }
   };
 
@@ -184,114 +230,139 @@ export default function WatchAds() {
           <Tv size={40} className="-rotate-3" />
         </div>
         <h1 className="text-3xl font-black tracking-tight text-slate-950">Watch & Earn</h1>
-        <p className="text-slate-500 font-medium max-w-xs mx-auto">Watch high-quality video ads and earn big points every few minutes!</p>
+        <p className="text-slate-500 font-medium max-w-xs mx-auto">Watch videos from the list below and earn rewards every {cooldownMinutes} minutes!</p>
         
         <div className="flex justify-center gap-3">
-          <div className="bg-white px-4 py-2 rounded-2xl text-xs font-bold text-slate-600 border border-slate-100 shadow-sm">
-            Daily Limits: {currentPlays} / {dailyLimit}
+          <div className="bg-white px-4 py-2 rounded-2xl text-xs font-bold text-slate-600 border border-slate-100 shadow-sm flex items-center gap-2">
+            <Clock size={14} className="text-indigo-500" />
+            Cooldown: {cooldownMinutes}m
           </div>
-          <div className="bg-emerald-50 px-4 py-2 rounded-2xl text-xs font-bold text-emerald-600 border border-emerald-100 shadow-sm">
-            +{rewardPoints} Pts / Video
+          <div className="bg-white px-4 py-2 rounded-2xl text-xs font-bold text-slate-600 border border-slate-100 shadow-sm">
+            Limits: {currentPlays} / {dailyLimit}
           </div>
         </div>
       </header>
 
       <AdUnit code={settings.ad_banner_728x90} minimal hideLabel />
 
-      <Card className="rounded-[2.5rem] border-slate-100 shadow-2xl shadow-indigo-500/5 overflow-hidden">
-        <CardContent className="p-8 md:p-12 text-center space-y-8">
-          <AnimatePresence mode="wait">
-            {!canPlay ? (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="py-10 space-y-4"
-              >
-                <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mx-auto text-slate-400 mb-2">
-                  <Tv size={32} />
-                </div>
-                <h2 className="text-2xl font-black text-slate-900">Daily Goal Reached!</h2>
-                <p className="text-slate-500 font-medium">You've reached your daily limit for video ads. Come back tomorrow for more rewards!</p>
-              </motion.div>
-            ) : adStarted ? (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="py-12 space-y-6"
-              >
-                <div className="relative w-24 h-24 mx-auto">
-                  <div className="absolute inset-0 border-4 border-indigo-100 rounded-full" />
-                  <div className="absolute inset-0 border-4 border-indigo-600 rounded-full border-t-transparent animate-spin" />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <Tv size={32} className="text-indigo-600" />
-                  </div>
-                </div>
+      <AnimatePresence mode="wait">
+        {adStarted && currentVideo ? (
+          <motion.div 
+            key="player"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="space-y-6"
+          >
+            <Card className="rounded-[2.5rem] border-slate-100 shadow-2xl overflow-hidden">
+              <CardContent className="p-6 md:p-10 text-center space-y-6">
                 <div className="space-y-2">
-                  <h3 className="text-xl font-bold text-slate-900">Ad in Progress...</h3>
-                  <p className="text-slate-500 text-sm font-medium">Please do not close this page until the video finishes.</p>
+                  <h3 className="text-xl font-black text-slate-900">{currentVideo.title}</h3>
+                  <p className="text-slate-500 text-sm font-medium">Watch the full video below to unlock your points.</p>
                 </div>
-                {/* Clickadilla in-stream video container */}
-                <div 
-                  id="clickadilla-instream-target" 
-                  ref={adContainerRef}
-                  className="min-h-[300px] w-full rounded-2xl bg-slate-900 flex items-center justify-center overflow-hidden border border-white/10 mt-4 shadow-inner relative"
-                >
-                  <div className="text-slate-500 text-xs font-bold uppercase tracking-[0.2em] animate-pulse flex flex-col items-center gap-4">
-                    <Loader2 className="animate-spin text-indigo-500" size={32} />
-                    <span>Loading Video Experience...</span>
-                  </div>
-                </div>
-                <div className="pt-4 px-6">
-                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed">
-                    If the video doesn't play, please wait 30 seconds for your reward or try refreshing the page.
-                  </p>
-                </div>
-              </motion.div>
-            ) : (
-              <motion.div 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-8 py-6"
-              >
-                <div className="relative group max-w-[280px] mx-auto aspect-video cursor-pointer" onClick={handleWatchAd}>
-                  <div className="absolute inset-0 bg-indigo-600 rounded-3xl rotate-1 group-hover:rotate-2 transition-transform duration-500" />
-                  <div className="absolute inset-0 bg-slate-950 rounded-3xl -rotate-1 group-hover:-rotate-2 transition-transform duration-500 flex flex-col items-center justify-center overflow-hidden border border-white/10 shadow-2xl">
-                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-transparent" />
-                    <Play size={48} className="text-white fill-white relative z-10 filter drop-shadow-xl" />
-                    <div className="absolute bottom-4 left-0 right-0 text-center">
-                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-indigo-400">Unlock Rewards</span>
-                    </div>
-                  </div>
+                
+                <div className="relative aspect-video w-full rounded-2xl bg-slate-900 overflow-hidden border border-white/10 shadow-2xl group">
+                  <iframe 
+                    src={getEmbedUrl(currentVideo.url)}
+                    className="absolute inset-0 w-full h-full"
+                    allow="autoplay; encrypted-media; picture-in-picture"
+                    allowFullScreen
+                    title={currentVideo.title}
+                  />
                 </div>
 
-                <div className="space-y-4">
-                  <Button 
-                    size="lg" 
-                    onClick={handleWatchAd}
-                    disabled={loading || cooldown > 0}
-                    className="w-full max-w-xs h-16 bg-indigo-600 hover:bg-indigo-700 text-white rounded-[2rem] font-black text-lg shadow-xl shadow-indigo-600/20 active:scale-95 transition-all"
-                  >
-                    {cooldown > 0 ? (
-                      <span className="flex items-center gap-2">
-                        <Clock size={20} />
-                        WAIT {Math.floor(cooldown / 60)}:{(cooldown % 60).toString().padStart(2, '0')}
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-2">
-                        <Tv size={20} />
-                        WATCH VIDEO AD
-                      </span>
-                    )}
-                  </Button>
-                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
-                    Available: {dailyLimit - currentPlays} More Today
+                <div className="pt-4 space-y-4">
+                  {videoEnded ? (
+                    <Button 
+                      onClick={completeAd}
+                      className="w-full h-16 bg-emerald-600 hover:bg-emerald-700 text-white rounded-[2rem] font-black text-lg shadow-xl shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Sparkles size={24} />
+                      CLAIM {Math.floor(currentVideo.points * (user?.multiplier || 1))} POINTS
+                    </Button>
+                  ) : (
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex items-center justify-center gap-3">
+                      <Loader2 className="animate-spin text-indigo-500" size={20} />
+                      <span className="text-sm font-bold text-slate-600 uppercase tracking-widest">Watching video...</span>
+                    </div>
+                  )}
+                  <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest leading-relaxed px-6">
+                    Important: You must watch at least 30 seconds to claim points.
                   </p>
+                  <Button variant="ghost" onClick={() => { setAdStarted(false); setCurrentVideo(null); }} className="text-slate-400 font-bold text-xs">
+                    Cancel and go back
+                  </Button>
                 </div>
-              </motion.div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ) : (
+          <motion.div 
+            key="list"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            {cooldown > 0 && (
+              <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex items-center gap-3 text-amber-700">
+                <Clock className="animate-pulse" size={20} />
+                <span className="text-sm font-bold">Next video available in: {Math.floor(cooldown / 60)}:{(cooldown % 60).toString().padStart(2, '0')}</span>
+              </div>
             )}
-          </AnimatePresence>
-        </CardContent>
-      </Card>
+
+            <div className="grid grid-cols-1 gap-4">
+              {videoAds.length === 0 ? (
+                <div className="text-center py-20 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                  <Tv className="mx-auto text-slate-300 mb-4" size={48} />
+                  <p className="text-slate-400 font-medium">No videos available at the moment.</p>
+                </div>
+              ) : (
+                videoAds.map((video, index) => (
+                  <motion.div
+                    key={video.id}
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    className={`relative p-5 rounded-3xl border transition-all ${
+                      cooldown > 0 
+                        ? 'bg-slate-50 border-slate-100 opacity-60' 
+                        : 'bg-white border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-100 group'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${
+                          cooldown > 0 ? 'bg-slate-200 text-slate-400' : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'
+                        }`}>
+                          <Play size={24} className={cooldown > 0 ? '' : 'fill-current'} />
+                        </div>
+                        <div>
+                          <h3 className="font-bold text-slate-900 line-clamp-1">{video.title}</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-emerald-600 font-black text-xs">+{video.points} Pts</span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Video {index + 1}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <Button 
+                        disabled={cooldown > 0 || currentPlays >= dailyLimit}
+                        onClick={() => handleSelectVideo(video)}
+                        variant={cooldown > 0 ? "outline" : "default"}
+                        className={`rounded-2xl font-bold h-11 px-6 ${
+                          cooldown > 0 ? 'border-slate-200 text-slate-400' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/10'
+                        }`}
+                      >
+                        {cooldown > 0 ? 'Waiting' : 'Watch Now'}
+                      </Button>
+                    </div>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="rounded-[2rem] border-slate-100 shadow-sm overflow-hidden">

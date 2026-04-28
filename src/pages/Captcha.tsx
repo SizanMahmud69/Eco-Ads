@@ -40,6 +40,12 @@ export default function Captcha() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if ((user?.profile_health ?? 100) < 10) {
+      toast.error("Low Health! Your profile health must be at least 10% to play.");
+      return;
+    }
+
     if (userInput.toUpperCase() === captcha) {
       setLoading(true);
       try {
@@ -62,11 +68,15 @@ export default function Captcha() {
         });
 
         setSolvedCount(prev => prev + 1);
+        // User requested animation: "paper cards red blue yellow green paper like top from bottom falling"
         confetti({
           particleCount: 150,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#10b981', '#3b82f6', '#f59e0b', '#FF6B6B', '#4ECDC4']
+          spread: 80,
+          origin: { y: 0.1 }, 
+          colors: ['#FF6B6B', '#4ECDC4', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'],
+          gravity: 0.8,
+          scalar: 1.2,
+          ticks: 300
         });
         toast.success(`Correct! +${reward} points`);
         generateCaptcha();
@@ -77,12 +87,14 @@ export default function Captcha() {
         setLoading(false);
       }
     } else {
-      toast.error('Incorrect captcha. Try again.');
       // Decrease health on wrong answer
       if (user) {
         updateUser({
           profile_health: Math.max(0, (user.profile_health ?? 100) - 3)
         }).catch(console.error);
+        toast.error('Incorrect captcha! -3% Health');
+      } else {
+        toast.error('Incorrect captcha. Try again.');
       }
       generateCaptcha();
     }

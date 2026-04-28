@@ -98,7 +98,7 @@ export default function Spin() {
     return `${minutes}m ${seconds}s`;
   };
 
-  const canSpin = timeLeft <= 0 && (user?.daily_plays?.spin || 0) < (settings.daily_game_limit || 3);
+  const canSpin = timeLeft <= 0 && (user?.daily_plays?.spin || 0) < (settings.daily_game_limit || 3) && (user?.profile_health ?? 100) >= 10;
 
   const handleSpinResult = async (points: number) => {
     if (!user) return;

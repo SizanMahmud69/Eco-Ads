@@ -53,6 +53,11 @@ export default function WordGuess() {
     e.preventDefault();
     if (solved) return;
 
+    if ((user?.profile_health ?? 100) < 10) {
+      toast.error("Low Health! Your profile health must be at least 10% to play.");
+      return;
+    }
+
     if (userGuess.toUpperCase() === word) {
       setSolved(true);
       setLoading(true);
@@ -75,11 +80,15 @@ export default function WordGuess() {
           }
         });
 
+        // User requested animation: "paper cards red blue yellow green paper like top from bottom falling"
         confetti({
           particleCount: 150,
-          spread: 70,
-          origin: { y: 0.6 },
-          colors: ['#10b981', '#3b82f6', '#f59e0b', '#FF6B6B', '#4ECDC4']
+          spread: 80,
+          origin: { y: 0.1 }, 
+          colors: ['#FF6B6B', '#4ECDC4', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'],
+          gravity: 0.8,
+          scalar: 1.2,
+          ticks: 300
         });
 
         toast.success(`Correct! You earned ${reward} points.`);
@@ -92,7 +101,14 @@ export default function WordGuess() {
       }
     } else {
       setAttempts(prev => prev + 1);
-      toast.error('Wrong guess! Try again.');
+      if (user) {
+        updateUser({
+          profile_health: Math.max(0, (user.profile_health ?? 100) - 4)
+        }).catch(console.error);
+        toast.error('Wrong guess! -4% Health');
+      } else {
+        toast.error('Wrong guess! Try again.');
+      }
       setUserGuess('');
     }
   };

@@ -6,10 +6,13 @@ import { doc, setDoc, getDoc, collection, addDoc, serverTimestamp, query, where,
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Camera, QrCode, History, Trophy, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { Camera, QrCode, History, Trophy, AlertCircle, CheckCircle2, X, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AdUnit } from '@/components/AdUnit';
 import { useGameSettings } from '@/hooks/useGameSettings';
+import { PermissionDialog } from '@/components/PermissionDialog';
+import { useCameraPermission } from '@/hooks/usePermission';
+import confetti from 'canvas-confetti';
 
 export default function EcoScanner() {
   const { user, updateUser } = useAuth();
@@ -18,12 +21,31 @@ export default function EcoScanner() {
   const [reward, setReward] = useState<number | null>(null);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [permissionStatus, setPermissionStatus] = useState<'prompt' | 'granted' | 'denied'>('prompt');
+  const { 
+    status: camStatus, 
+    showDialog, 
+    setShowDialog, 
+    handleAllow, 
+    handleDeny,
+    requestPermission 
+  } = useCameraPermission();
+  
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
 
   const startScanner = async () => {
     if (isProcessing) return;
     
+    if ((user?.profile_health ?? 100) < 10) {
+      toast.error("Low Health! Your profile health must be at least 10% to scan. It will refill tomorrow.");
+      return;
+    }
+    
+    // Check our custom permission status first
+    if (camStatus !== 'granted') {
+      const alreadyChecked = await requestPermission();
+      if (!alreadyChecked) return; // Dialog is now showing
+    }
+
     // Explicitly check for mediaDevices support
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       toast.error("Your browser does not support camera access.");
@@ -80,7 +102,6 @@ export default function EcoScanner() {
         console.error("Camera start error:", err);
         sessionStorage.removeItem('scannerReloadPending');
         if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-          setPermissionStatus('denied');
           toast.error("Camera permission denied. Please enable camera access in your browser settings.");
         } else {
           toast.error("Could not start camera. Please ensure permissions are granted.");
@@ -149,7 +170,11 @@ export default function EcoScanner() {
       const codeSnap = await getDoc(codeRef);
 
       if (codeSnap.exists()) {
-        toast.error("This code has already been scanned!");
+        // Decrease health for "mistake" (scanning same code)
+        await updateUser({
+          profile_health: Math.max(0, (user.profile_health ?? 100) - 2)
+        });
+        toast.error("This code has already been scanned! -2% Health");
         setIsProcessing(false);
         return;
       }
@@ -174,6 +199,18 @@ export default function EcoScanner() {
       ]);
 
       setReward(points);
+      
+      // User requested animation: "paper cards red blue yellow green paper like top from bottom falling"
+      confetti({
+        particleCount: 150,
+        spread: 80,
+        origin: { y: 0.1 }, // Start from top
+        colors: ['#FF6B6B', '#4ECDC4', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'],
+        gravity: 0.8,
+        scalar: 1.2,
+        ticks: 300
+      });
+
       toast.success(`Success! You earned ${points} points.`);
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, 'scanned_codes');
@@ -189,6 +226,20 @@ export default function EcoScanner() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-12">
+      <PermissionDialog 
+        isOpen={showDialog}
+        onClose={handleDeny}
+        onAllow={async () => {
+          const granted = await handleAllow();
+          if (granted) {
+            // Give a tiny moment for state to sync and dialog to fade
+            setTimeout(() => startScanner(), 300);
+          }
+        }}
+        title="Allow Eco Ads to access your camera?"
+        description="Permission is required to scan codes and earn points."
+      />
+
       <header className="text-center space-y-2">
         <div className="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto text-emerald-600 mb-4">
           <QrCode size={32} />
@@ -203,7 +254,7 @@ export default function EcoScanner() {
         <CardContent className="p-8 space-y-6">
           {!scanning && !reward && (
             <div className="text-center space-y-6 py-8">
-              {permissionStatus === 'denied' && (
+              {camStatus === 'denied' && (
                 <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-600 text-sm space-y-2 animate-in fade-in slide-in-from-top-2">
                   <div className="flex items-center justify-center gap-2 font-bold">
                     <AlertCircle size={18} />
@@ -292,23 +343,57 @@ export default function EcoScanner() {
           <AnimatePresence>
             {reward && (
               <motion.div 
-                initial={{ scale: 0.9, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                className="text-center space-y-6 py-8"
+                initial={{ scale: 0.9, opacity: 0, y: 20 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                className="text-center space-y-8 py-10 relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-50 to-white border border-emerald-100/50"
               >
-                <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center mx-auto text-white shadow-xl shadow-emerald-500/30">
-                  <CheckCircle2 size={40} />
-                </div>
-                <div className="space-y-2">
-                  <h2 className="text-4xl font-black text-slate-900">+{reward} Points!</h2>
-                  <p className="text-slate-500 font-bold">Code Scanned Successfully</p>
-                </div>
-                <Button 
-                  onClick={() => setReward(null)}
-                  className="w-full h-14 rounded-xl font-black"
+                {/* Decorative background elements */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 rounded-full -mr-16 -mt-16 blur-3xl" />
+                <div className="absolute bottom-0 left-0 w-32 h-32 bg-blue-500/5 rounded-full -ml-16 -mb-16 blur-3xl" />
+                
+                <motion.div 
+                  initial={{ rotate: -10, scale: 0.8 }}
+                  animate={{ rotate: 0, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 200, damping: 10 }}
+                  className="w-24 h-24 bg-emerald-500 rounded-[2rem] flex items-center justify-center mx-auto text-white shadow-2xl shadow-emerald-500/40 relative z-10"
                 >
-                  SCAN ANOTHER
-                </Button>
+                  <Trophy size={48} className="drop-shadow-lg" />
+                </motion.div>
+                
+                <div className="space-y-3 relative z-10">
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                  >
+                    <h2 className="text-5xl font-black text-slate-900 tracking-tighter">
+                      <span className="text-emerald-500">+{reward}</span> Points!
+                    </h2>
+                  </motion.div>
+                  <motion.p 
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                    className="text-slate-500 font-bold uppercase tracking-widest text-xs"
+                  >
+                    Product Scanned Successfully
+                  </motion.p>
+                </div>
+
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.4 }}
+                  className="px-6"
+                >
+                  <Button 
+                    onClick={() => setReward(null)}
+                    className="w-full h-16 rounded-2xl font-black text-lg gap-3 bg-emerald-600 hover:bg-emerald-700 shadow-xl shadow-emerald-600/20 active:scale-95 transition-all"
+                  >
+                    <Camera size={20} />
+                    SCAN ANOTHER CODE
+                  </Button>
+                </motion.div>
               </motion.div>
             )}
           </AnimatePresence>

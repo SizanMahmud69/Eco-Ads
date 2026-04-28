@@ -42,7 +42,8 @@ import {
   UserCheck,
   UserX,
   Mail,
-  Heart
+  Heart,
+  Tv
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -73,6 +74,7 @@ export default function Admin() {
   const [tasks, setTasks] = useState<any[]>([]);
   const [plans, setPlans] = useState<any[]>([]);
   const [miningSessions, setMiningSessions] = useState<any[]>([]);
+  const [videoAds, setVideoAds] = useState<any[]>([]);
   const [premiumRequests, setPremiumRequests] = useState<any[]>([]);
   const [referralRewards, setReferralRewards] = useState<any[]>([]);
   const [gameSettings, setGameSettings] = useState({
@@ -95,6 +97,9 @@ export default function Admin() {
     spin_cooldown: 60,
     scratch_cooldown: 30,
     maintenance_mode: false,
+    maintenance_message: '',
+    maintenance_duration: 1,
+    maintenance_start_at: '',
     ad_popunder: '',
     ad_social_bar: '',
     ad_banner_728x90: '',
@@ -180,9 +185,10 @@ export default function Admin() {
     premiumUsers: 0
   });
 
-  // Form states for adding tasks/plans
+  // Form states for adding tasks/plans/videos
   const [newTask, setNewTask] = useState({ title: '', description: '', points_reward: 0, type: 'daily', link: '', timer: 30 });
   const [newPlan, setNewPlan] = useState({ name: '', price: 0, duration_days: 30, features: '', multiplier: 1 });
+  const [newVideoAd, setNewVideoAd] = useState({ url: '', title: '', points: 20 });
   const [broadcast, setBroadcast] = useState({ title: '', message: '', type: 'info' as any, link: '', targetType: 'all', targetUids: [] as string[] });
   const [broadcasting, setBroadcasting] = useState(false);
   const [userSearchTerm, setUserSearchTerm] = useState('');
@@ -240,6 +246,10 @@ export default function Admin() {
       setPlans(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    const unsubVideoAds = onSnapshot(query(collection(db, 'video_ads'), orderBy('created_at', 'desc')), (snapshot) => {
+      setVideoAds(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
     const unsubMining = onSnapshot(query(collection(db, 'mining_sessions'), orderBy('start_at', 'desc'), limit(50)), (snapshot) => {
       setMiningSessions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -264,6 +274,7 @@ export default function Admin() {
       unsubWithdrawals();
       unsubTasks();
       unsubPlans();
+      unsubVideoAds();
       unsubMining();
       unsubPremium();
       unsubReferralRewards();
@@ -320,13 +331,45 @@ export default function Admin() {
     }
   };
 
+  const handleAddVideoAd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await addDoc(collection(db, 'video_ads'), {
+        ...newVideoAd,
+        created_at: serverTimestamp()
+      });
+      setNewVideoAd({ url: '', title: '', points: 20 });
+      toast.success('Video ad added successfully');
+    } catch (error) {
+      toast.error('Failed to add video ad');
+    }
+  };
+
+  const handleDeleteVideoAd = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this video ad?')) return;
+    try {
+      await deleteDoc(doc(db, 'video_ads', id));
+      toast.success('Video ad deleted');
+    } catch (error) {
+      toast.error('Failed to delete video ad');
+    }
+  };
+
   const handleTogglePremium = async (userId: string, currentStatus: boolean) => {
+    if (currentStatus) {
+      toast.error('Premium status cannot be revoked once granted.');
+      return;
+    }
     try {
       const userRef = doc(db, 'users', userId);
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 30); // Default to 30 days for manual grant
+
       await updateDoc(userRef, {
-        is_premium: !currentStatus
+        is_premium: true,
+        premium_expiry: expiryDate.toISOString()
       });
-      toast.success(`User status updated to ${!currentStatus ? 'Premium' : 'Free'}`);
+      toast.success(`User status updated to Premium (30 days)`);
     } catch (error) {
       toast.error('Failed to update user status');
     }
@@ -371,11 +414,15 @@ export default function Admin() {
   const handleApprovePremium = async (request: any) => {
     try {
       const userRef = doc(db, 'users', request.userId);
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + (request.durationDays || 30));
+      
       await updateDoc(userRef, {
         is_premium: true,
         planId: request.planId,
         planName: request.planName,
-        multiplier: request.multiplier || 1
+        multiplier: request.multiplier || 1,
+        premium_expiry: expiryDate.toISOString()
       });
 
       const requestRef = doc(db, 'premium_requests', request.id);
@@ -708,6 +755,12 @@ export default function Admin() {
             active={activeTab === 'ads'} 
             onClick={() => handleNavClick('ads')} 
           />
+          <AdminNavLink 
+            icon={<Tv size={20} />} 
+            label="Videos" 
+            active={activeTab === 'videos'} 
+            onClick={() => handleNavClick('videos')} 
+          />
         </nav>
 
         <div className="p-4 border-t border-slate-800 space-y-2">
@@ -992,9 +1045,9 @@ export default function Admin() {
                                     <Info size={16} className="mr-3" /> <span className="font-bold text-sm">Full Profile</span>
                                   </DropdownMenuItem>
                                   
-                                  <DropdownMenuItem onClick={() => handleTogglePremium(u.id, !!u.is_premium)} className="hover:bg-amber-500/10 hover:text-amber-500 cursor-pointer rounded-xl py-3 px-4 transition-colors">
-                                    <Zap size={16} className={`mr-3 ${u.is_premium ? 'fill-amber-500' : ''}`} /> 
-                                    <span className="font-bold text-sm">{u.is_premium ? 'Downgrade to Free' : 'Grant Premium'}</span>
+                                  <DropdownMenuItem onClick={() => handleTogglePremium(u.id, !!u.is_premium)} className={`${u.is_premium ? 'opacity-70 cursor-default' : 'hover:bg-amber-500/10 hover:text-amber-500 cursor-pointer'} rounded-xl py-3 px-4 transition-colors`}>
+                                    <Zap size={16} className={`mr-3 ${u.is_premium ? 'text-amber-500 fill-amber-500' : ''}`} /> 
+                                    <span className="font-bold text-sm">{u.is_premium ? 'Premium Active' : 'Grant Premium'}</span>
                                   </DropdownMenuItem>
   
                                   <DropdownMenuItem onClick={() => handleToggleFreeze(u.id, !!u.is_frozen)} className="hover:bg-blue-500/10 hover:text-blue-400 cursor-pointer rounded-xl py-3 px-4 transition-colors">
@@ -1209,6 +1262,77 @@ export default function Admin() {
                           </TableCell>
                         </TableRow>
                       ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {activeTab === 'videos' && (
+            <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+              <Card className="bg-slate-800 border-slate-700 text-slate-100">
+                <CardHeader>
+                  <CardTitle>Add New Video Ad</CardTitle>
+                  <CardDescription className="text-slate-400">YouTube or Facebook video links that users watch to earn points.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleAddVideoAd} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2 md:col-span-2">
+                      <Label>Video Title</Label>
+                      <Input value={newVideoAd.title} onChange={e => setNewVideoAd({...newVideoAd, title: e.target.value})} className="bg-slate-900 border-slate-700" placeholder="e.g. Watch this cool eco video" required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Video URL (YouTube/Facebook)</Label>
+                      <Input value={newVideoAd.url} onChange={e => setNewVideoAd({...newVideoAd, url: e.target.value})} className="bg-slate-900 border-slate-700" placeholder="https://youtube.com/watch?v=..." required />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Points Reward</Label>
+                      <Input type="number" value={newVideoAd.points} onChange={e => setNewVideoAd({...newVideoAd, points: parseInt(e.target.value) || 0})} className="bg-slate-900 border-slate-700" required />
+                    </div>
+                    <Button type="submit" className="md:col-span-2 bg-emerald-600 hover:bg-emerald-700">Add Video Ad</Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-slate-800 border-slate-700 text-slate-100">
+                <CardHeader>
+                  <CardTitle>Currently Active Videos</CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <Table>
+                    <TableHeader className="bg-slate-900/40">
+                      <TableRow className="border-slate-700">
+                        <TableHead className="p-6">Title</TableHead>
+                        <TableHead className="p-6">Reward</TableHead>
+                        <TableHead className="p-6">URL</TableHead>
+                        <TableHead className="p-6 text-right">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {videoAds.map(video => (
+                        <TableRow key={video.id} className="border-slate-700 hover:bg-slate-700/20">
+                          <TableCell className="p-6 font-bold">{video.title}</TableCell>
+                          <TableCell className="p-6 text-emerald-400 font-black">+{video.points} PTS</TableCell>
+                          <TableCell className="p-6">
+                            <a href={video.url} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline text-xs font-mono truncate max-w-[200px] block">
+                              {video.url}
+                            </a>
+                          </TableCell>
+                          <TableCell className="p-6 text-right">
+                            <Button size="icon" variant="ghost" className="text-red-400 hover:text-red-300" onClick={() => handleDeleteVideoAd(video.id)}>
+                              <Trash2 size={16} />
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {videoAds.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center py-10 text-slate-500">
+                            No videos added yet.
+                          </TableCell>
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
                 </CardContent>
@@ -1820,21 +1944,59 @@ export default function Admin() {
                         <CardDescription className="text-slate-400">Maintenance and global toggles.</CardDescription>
                       </CardHeader>
                       <CardContent className="space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-slate-900/50 rounded-xl border border-slate-700 transition-all hover:border-slate-600">
-                          <div>
-                            <p className="font-bold text-slate-200">Maintenance Mode</p>
-                            <p className="text-xs text-slate-500">Disable app access for all users</p>
+                        <div className="space-y-4 p-4 bg-slate-900/50 rounded-xl border border-slate-700 transition-all hover:border-slate-600">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-bold text-slate-200">Maintenance Mode</p>
+                              <p className="text-xs text-slate-500">Disable app access for all users</p>
+                            </div>
+                            <div 
+                              onClick={async () => {
+                                const newVal = !gameSettings.maintenance_mode;
+                                const update: any = { maintenance_mode: newVal };
+                                if (newVal) {
+                                  update.maintenance_start_at = new Date().toISOString();
+                                }
+                                const updatedSettings = { ...gameSettings, ...update };
+                                setGameSettings(updatedSettings);
+                                await setDoc(doc(db, 'settings', 'game_points'), updatedSettings);
+                                toast.success(`Maintenance mode ${newVal ? 'Enabled' : 'Disabled'}`);
+                              }}
+                              className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${gameSettings.maintenance_mode ? 'bg-red-600' : 'bg-slate-700'}`}
+                            >
+                              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${gameSettings.maintenance_mode ? 'right-1' : 'left-1'}`} />
+                            </div>
                           </div>
-                          <div 
-                            onClick={async () => {
-                              const newVal = !gameSettings.maintenance_mode;
-                              setGameSettings({...gameSettings, maintenance_mode: newVal});
-                              await setDoc(doc(db, 'settings', 'game_points'), {...gameSettings, maintenance_mode: newVal});
-                              toast.success(`Maintenance mode ${newVal ? 'Enabled' : 'Disabled'}`);
-                            }}
-                            className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors ${gameSettings.maintenance_mode ? 'bg-red-600' : 'bg-slate-700'}`}
-                          >
-                            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${gameSettings.maintenance_mode ? 'right-1' : 'left-1'}`} />
+
+                          <div className="space-y-3 pt-2">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Maintenance Message</label>
+                              <input 
+                                type="text"
+                                value={gameSettings.maintenance_message || ''}
+                                onChange={(e) => setGameSettings({...gameSettings, maintenance_message: e.target.value})}
+                                placeholder="E.g., System upgrade in progress..."
+                                className="w-full bg-slate-800 border-slate-700 rounded-lg p-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Duration (Hours)</label>
+                              <input 
+                                type="number"
+                                value={gameSettings.maintenance_duration || 1}
+                                onChange={(e) => setGameSettings({...gameSettings, maintenance_duration: parseInt(e.target.value) || 0})}
+                                className="w-full bg-slate-800 border-slate-700 rounded-lg p-2 text-sm focus:ring-1 focus:ring-emerald-500 outline-none"
+                              />
+                            </div>
+                            <button 
+                              onClick={async () => {
+                                await setDoc(doc(db, 'settings', 'game_points'), gameSettings);
+                                toast.success('Maintenance settings saved');
+                              }}
+                              className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-xs transition-colors"
+                            >
+                              Save Maintenance Info
+                            </button>
                           </div>
                         </div>
 

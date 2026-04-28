@@ -56,6 +56,7 @@ export default function Upgrade() {
         planId: selectedPlan.id,
         planName: selectedPlan.name,
         multiplier: selectedPlan.multiplier || 1,
+        durationDays: selectedPlan.duration_days || 30,
         method,
         transactionId,
         senderNumber,

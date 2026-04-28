@@ -106,10 +106,17 @@ const ActivityLink = ({ to, icon, title, description, isPremium }: any) => {
             <div className="flex items-center gap-2">
               <h3 className="font-bold">{title}</h3>
               {isPremium && (
-                <div className="flex items-center gap-1 bg-amber-500/10 text-amber-600 px-2 py-0.5 rounded-full text-[8px] font-black border border-amber-500/20">
-                  <Zap size={8} className="fill-amber-500" />
-                  PREMIUM
-                </div>
+                user?.is_premium ? (
+                  <div className="flex items-center gap-1 bg-emerald-500/10 text-emerald-600 px-2 py-0.5 rounded-full text-[8px] font-black border border-emerald-500/20">
+                    <ShieldCheck size={8} className="fill-emerald-600" />
+                    UNLOCKED
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 bg-amber-500/10 text-amber-600 px-2 py-0.5 rounded-full text-[8px] font-black border border-amber-500/20">
+                    <Zap size={8} className="fill-amber-500" />
+                    PREMIUM
+                  </div>
+                )
               )}
             </div>
             <p className="text-xs text-slate-500">{description}</p>

@@ -403,6 +403,7 @@ export default function Profile() {
             label="Membership Status" 
             value={user?.is_premium ? 'Premium' : 'Standard'} 
             badge={user?.is_premium}
+            description={user?.is_premium && user?.premium_expiry ? `Expires on ${new Date(user.premium_expiry).toLocaleDateString()}` : null}
           />
           <SettingsItem 
             icon={<CheckCircle2 size={18} className="text-emerald-500" />} 
@@ -509,13 +510,16 @@ const StatCard = ({ title, value, unit, icon, color, action }: any) => {
   );
 };
 
-const SettingsItem = ({ icon, label, value, badge }: any) => (
+const SettingsItem = ({ icon, label, value, badge, description }: any) => (
   <div className="flex items-center justify-between p-5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group">
     <div className="flex items-center gap-4">
       <div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-2xl group-hover:scale-110 transition-transform">
         {icon}
       </div>
-      <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{label}</span>
+      <div className="flex flex-col">
+        <span className="text-sm font-bold text-slate-700 dark:text-slate-300">{label}</span>
+        {description && <span className="text-[10px] text-slate-400 font-medium">{description}</span>}
+      </div>
     </div>
     <div className="flex items-center gap-3">
       <span className={`text-sm font-black ${badge ? 'text-amber-500' : 'text-slate-900 dark:text-white'}`}>{value}</span>

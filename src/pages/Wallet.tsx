@@ -89,6 +89,9 @@ export default function Wallet() {
         console.error("Error processing wallet history:", err);
         setLoading(false);
       }
+    }, (error) => {
+      console.error("Error listening to user history:", error);
+      if (isMounted) setLoading(false);
     });
 
     return () => {
@@ -169,6 +172,11 @@ export default function Wallet() {
         </Card>
       </motion.div>
 
+      {/* Top Page Ad */}
+      <div className="py-2 px-1 flex justify-center">
+        <AdUnit code={settings.ad_banner_728x90 || settings.ad_square_300x250 || settings.ad_banner_320x50 || settings.clickadilla_banner} className="rounded-xl overflow-hidden" />
+      </div>
+
       {/* History Section */}
       <section className="space-y-4">
         <div className="flex items-center justify-between px-2">
@@ -246,9 +254,9 @@ export default function Wallet() {
                     </Card>
                   </motion.div>
                   
-                  {(idx + 1) % 4 === 0 && (
-                    <div className="my-4 flex justify-center">
-                      <AdUnit code={settings.ad_banner_468x60} className="" />
+                  {(idx + 1) % 5 === 0 && (
+                    <div className="my-6 flex justify-center">
+                      <AdUnit code={settings.ad_banner_468x60 || settings.ad_square_300x250 || settings.ad_banner_320x50} className="rounded-xl overflow-hidden shadow-sm" />
                     </div>
                   )}
                 </div>
@@ -274,6 +282,11 @@ export default function Wallet() {
           </AnimatePresence>
         </div>
       </section>
+
+      {/* Bottom Page Ad */}
+      <div className="py-2 px-1 flex justify-center">
+        <AdUnit code={settings.ad_native_bottom || settings.ad_banner_728x90 || settings.ad_banner_320x50} />
+      </div>
     </div>
   );
 }

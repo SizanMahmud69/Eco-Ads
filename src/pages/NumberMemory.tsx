@@ -45,6 +45,10 @@ export default function NumberMemory() {
   }, [gameState, level]);
 
   const handleStart = () => {
+    if ((user?.profile_health ?? 100) < 10) {
+      toast.error("Low Health! Your profile health must be at least 10% to play. It will refill tomorrow.");
+      return;
+    }
     setLevel(1);
     setPointsEarned(0);
     generateNumber(1);
@@ -74,6 +78,12 @@ export default function NumberMemory() {
 
   const handleGameOver = async () => {
     setGameState('result');
+    if (user) {
+      updateUser({
+        profile_health: Math.max(0, (user.profile_health ?? 100) - 8)
+      }).catch(console.error);
+      toast.error("Memory failure! -8% Health");
+    }
     const finalPoints = Math.floor((level - 1) * (rewardPoints / 2) * (user?.multiplier || 1));
     setPointsEarned(finalPoints);
     if (finalPoints > 0) {

@@ -133,12 +133,20 @@ export default function AdminUserDetails() {
 
   const handleTogglePremium = async () => {
     if (!user) return;
+    if (user.is_premium) {
+      toast.error('Premium status cannot be revoked once granted.');
+      return;
+    }
     try {
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 30);
+      
       await updateDoc(doc(db, 'users', user.id), {
-        is_premium: !user.is_premium
+        is_premium: true,
+        premium_expiry: expiryDate.toISOString()
       });
-      setUser({ ...user, is_premium: !user.is_premium });
-      toast.success(user.is_premium ? "Downgraded to Free" : "Promoted to Premium");
+      setUser({ ...user, is_premium: true, premium_expiry: expiryDate.toISOString() });
+      toast.success("Promoted to Premium (30 days)");
     } catch (err) {
       toast.error("Failed to update status");
     }
@@ -472,11 +480,11 @@ export default function AdminUserDetails() {
                 </CardHeader>
                 <CardContent className="p-4 space-y-3">
                    <Button 
-                    className="w-full justify-start h-12 bg-white/5 hover:bg-white/10 text-white font-bold gap-3 rounded-xl border border-white/5"
+                    className={`w-full justify-start h-12 font-bold gap-3 rounded-xl border ${user.is_premium ? 'bg-amber-500/10 text-amber-500 border-amber-500/20 cursor-default hover:bg-amber-500/10' : 'bg-white/5 hover:bg-white/10 text-white border-white/5'}`}
                     onClick={handleTogglePremium}
                    >
                      <Zap size={18} className={user.is_premium ? 'text-amber-500 fill-amber-500' : 'text-slate-500'} />
-                     {user.is_premium ? 'Revoke VIP Privilege' : 'Elevate to Premium'}
+                     {user.is_premium ? 'Premium Membership Active' : 'Elevate to Premium'}
                    </Button>
 
                    <Button 

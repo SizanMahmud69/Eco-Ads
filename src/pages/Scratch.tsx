@@ -78,7 +78,7 @@ export default function Scratch() {
     return `${minutes}m ${seconds}s`;
   };
 
-  const canScratch = timeLeft <= 0 && (user?.daily_plays?.scratch || 0) < (settings.daily_game_limit || 3);
+  const canScratch = timeLeft <= 0 && (user?.daily_plays?.scratch || 0) < (settings.daily_game_limit || 3) && (user?.profile_health ?? 100) >= 10;
 
   const handleScratchResult = async (points: number) => {
     if (!user) return;
@@ -99,11 +99,15 @@ export default function Scratch() {
           scratch: (user.daily_plays?.scratch || 0) + 1
         }
       });
+      // User requested animation: "paper cards red blue yellow green paper like top from bottom falling"
       confetti({
         particleCount: 150,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ['#10b981', '#3b82f6', '#f59e0b', '#FF6B6B', '#4ECDC4']
+        spread: 80,
+        origin: { y: 0.1 }, 
+        colors: ['#FF6B6B', '#4ECDC4', '#f59e0b', '#10b981', '#3b82f6', '#8b5cf6'],
+        gravity: 0.8,
+        scalar: 1.2,
+        ticks: 300
       });
       toast.success(`You won ${points} points!`);
     } catch (error) {
