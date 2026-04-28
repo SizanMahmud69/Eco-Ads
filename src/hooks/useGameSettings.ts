@@ -20,6 +20,9 @@ export interface GameSettings {
   spin_cooldown: number;
   scratch_cooldown: number;
   maintenance_mode: boolean;
+  maintenance_message?: string;
+  maintenance_duration?: number;
+  maintenance_start_at?: string;
   // Ad Codes
   ad_popunder?: string;
   ad_social_bar?: string;
