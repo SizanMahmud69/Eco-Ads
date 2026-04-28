@@ -22,9 +22,34 @@ export default function WatchAds() {
   const [adStarted, setAdStarted] = useState(false);
   const [cooldown, setCooldown] = useState(0);
   const [videoEnded, setVideoEnded] = useState(false);
+  const [watchedTodayIds, setWatchedTodayIds] = useState<string[]>([]);
 
   const dailyLimit = settings.daily_game_limit || 10;
   const cooldownMinutes = settings.watch_ads_cooldown || 5;
+
+  // Fetch watched video IDs for today
+  useEffect(() => {
+    if (!user) return;
+
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+
+    const q = query(
+      collection(db, 'history'),
+      where('userId', '==', user.uid),
+      where('type', '==', 'watch_ads'),
+      where('created_at', '>=', startOfDay)
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const ids = snapshot.docs.map(doc => doc.data().videoId).filter(id => !!id);
+      setWatchedTodayIds(ids);
+    }, (error) => {
+      console.error("Error fetching today's watched videos:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   // Fetch Video Ads from Admin collection
   useEffect(() => {
@@ -137,10 +162,13 @@ export default function WatchAds() {
     
     // YouTube
     if (url.includes('youtube.com') || url.includes('youtu.be')) {
-      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+      const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
       const match = url.match(regExp);
-      const id = (match && match[2].length === 11) ? match[2] : null;
-      return id ? `https://www.youtube.com/embed/${id}?autoplay=1&rel=0` : url;
+      if (match && match[2]) {
+        const id = match[2];
+        return `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`;
+      }
+      return url;
     }
     
     // Facebook
@@ -153,6 +181,11 @@ export default function WatchAds() {
 
   // Handle selection of a specific video
   const handleSelectVideo = (video: any) => {
+    if (watchedTodayIds.includes(video.id)) {
+      toast.error("You have already watched this video today!");
+      return;
+    }
+
     if (cooldown > 0) {
       toast.error(`Please wait ${Math.floor(cooldown / 60)}m ${cooldown % 60}s before next video`);
       return;
@@ -317,47 +350,52 @@ export default function WatchAds() {
                   <p className="text-slate-400 font-medium">No videos available at the moment.</p>
                 </div>
               ) : (
-                videoAds.map((video, index) => (
-                  <motion.div
-                    key={video.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    className={`relative p-5 rounded-3xl border transition-all ${
-                      cooldown > 0 
-                        ? 'bg-slate-50 border-slate-100 opacity-60' 
-                        : 'bg-white border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-100 group'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-4">
-                        <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${
-                          cooldown > 0 ? 'bg-slate-200 text-slate-400' : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'
-                        }`}>
-                          <Play size={24} className={cooldown > 0 ? '' : 'fill-current'} />
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-slate-900 line-clamp-1">{video.title}</h3>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-emerald-600 font-black text-xs">+{video.points} Pts</span>
-                            <span className="text-slate-300">•</span>
-                            <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">Video {index + 1}</span>
+                videoAds.map((video, index) => {
+                  const isWatched = watchedTodayIds.includes(video.id);
+                  return (
+                    <motion.div
+                      key={video.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
+                      className={`relative p-5 rounded-3xl border transition-all ${
+                        cooldown > 0 || isWatched
+                          ? 'bg-slate-50 border-slate-100 opacity-60' 
+                          : 'bg-white border-slate-100 shadow-sm hover:shadow-md hover:border-indigo-100 group'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-4">
+                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-colors ${
+                            cooldown > 0 || isWatched ? 'bg-slate-200 text-slate-400' : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'
+                          }`}>
+                            <Play size={24} className={cooldown > 0 || isWatched ? '' : 'fill-current'} />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-slate-900 line-clamp-1">{video.title}</h3>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-emerald-600 font-black text-xs">+{video.points} Pts</span>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-slate-400 text-[10px] font-bold uppercase tracking-wider">
+                                {isWatched ? 'Watched Today' : `Video ${index + 1}`}
+                              </span>
+                            </div>
                           </div>
                         </div>
+                        <Button 
+                          disabled={cooldown > 0 || currentPlays >= dailyLimit || isWatched}
+                          onClick={() => handleSelectVideo(video)}
+                          variant={cooldown > 0 || isWatched ? "outline" : "default"}
+                          className={`rounded-2xl font-bold h-11 px-6 ${
+                            cooldown > 0 || isWatched ? 'border-slate-200 text-slate-400' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/10'
+                          }`}
+                        >
+                          {isWatched ? 'Watched' : cooldown > 0 ? 'Wait' : 'Watch Now'}
+                        </Button>
                       </div>
-                      <Button 
-                        disabled={cooldown > 0 || currentPlays >= dailyLimit}
-                        onClick={() => handleSelectVideo(video)}
-                        variant={cooldown > 0 ? "outline" : "default"}
-                        className={`rounded-2xl font-bold h-11 px-6 ${
-                          cooldown > 0 ? 'border-slate-200 text-slate-400' : 'bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-600/10'
-                        }`}
-                      >
-                        {cooldown > 0 ? 'Waiting' : 'Watch Now'}
-                      </Button>
-                    </div>
-                  </motion.div>
-                ))
+                    </motion.div>
+                  );
+                })
               )}
             </div>
           </motion.div>
