@@ -199,15 +199,16 @@ const AppFooter = ({ dark = false }: { dark?: boolean }) => {
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, isAdmin, loading, logout } = useAuth();
-  const { settings } = useGameSettings();
   const [maintenance, setMaintenance] = React.useState(false);
-  const [progress, setProgress] = React.useState(88);
+  const [progress, setProgress] = React.useState(0);
+  const [maintenanceSettings, setMaintenanceSettings] = React.useState<any>({});
 
   React.useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'game_points'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         setMaintenance(data.maintenance_mode === true);
+        setMaintenanceSettings(data);
         
         // Calculate initial progress
         if (data.maintenance_mode && data.maintenance_start_at && data.maintenance_duration) {
@@ -218,10 +219,10 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
           
           let p = Math.floor((elapsed / durationMs) * 100);
           if (p < 0) p = 0;
-          if (p > 99) p = 99;
+          if (p > 100) p = 100;
           setProgress(p);
         } else {
-          setProgress(88);
+          setProgress(0);
         }
       }
     }, (error) => {
@@ -235,21 +236,21 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
     if (!maintenance || isAdmin) return;
     
     const interval = setInterval(() => {
-      if (settings.maintenance_start_at && settings.maintenance_duration) {
-        const start = new Date(settings.maintenance_start_at).getTime();
-        const durationMs = settings.maintenance_duration * 60 * 60 * 1000;
+      if (maintenanceSettings.maintenance_start_at && maintenanceSettings.maintenance_duration) {
+        const start = new Date(maintenanceSettings.maintenance_start_at).getTime();
+        const durationMs = maintenanceSettings.maintenance_duration * 60 * 60 * 1000;
         const now = Date.now();
         const elapsed = now - start;
         
         let p = Math.floor((elapsed / durationMs) * 100);
         if (p < 0) p = 0;
-        if (p > 99) p = 99;
+        if (p > 100) p = 100;
         setProgress(p);
       }
     }, 60000);
 
     return () => clearInterval(interval);
-  }, [maintenance, isAdmin, settings.maintenance_start_at, settings.maintenance_duration]);
+  }, [maintenance, isAdmin, maintenanceSettings.maintenance_start_at, maintenanceSettings.maintenance_duration]);
 
   if (loading) return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white">
@@ -293,26 +294,42 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
                 <div className="w-2 h-2 rounded-full bg-emerald-500/50" />
               </div>
               
-              <div className="w-full h-full overflow-hidden text-left space-y-1">
-                {[...Array(12)].map((_, i) => (
+              <div className="w-full h-full overflow-hidden text-left space-y-1 py-1">
+                {[
+                  "import { system } from 'eco';",
+                  "const app = init();",
+                  "app.optimize({",
+                  "  level: 'maximum',",
+                  "  cache: true,",
+                  "  secure: true",
+                  "});",
+                  "// Running migration...",
+                  "deploy.sync(data);",
+                  "status: OPTIMIZING",
+                  "const v = version();",
+                  "process.exit(0);"
+                ].map((line, i) => (
                   <motion.div
                     key={i}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: [0.3, 1, 0.3], x: 0 }}
                     transition={{ 
-                      duration: 2, 
+                      duration: 3, 
                       repeat: Infinity, 
-                      delay: i * 0.15,
-                      repeatDelay: 1
+                      delay: i * 0.1,
+                      repeatDelay: 0.5
                     }}
                     className="flex gap-2"
                   >
-                    <span className="text-slate-600 tabular-nums">{(i + 1).toString().padStart(2, '0')}</span>
-                    <span className={i % 3 === 0 ? "text-emerald-400" : i % 3 === 1 ? "text-blue-400" : "text-purple-400"}>
-                      {i % 4 === 0 ? "function deploy() {" : 
-                       i % 4 === 1 ? "  optimizing_assets();" : 
-                       i % 4 === 2 ? "  security_scan: OK;" : 
-                       "}"}
+                    <span className="text-slate-600 tabular-nums w-3 text-right">{(i + 1).toString().padStart(2, '0')}</span>
+                    <span className={`truncate ${
+                      line.includes('//') ? 'text-slate-500 italic' :
+                      line.includes('app.') ? 'text-emerald-400' :
+                      line.includes('init') ? 'text-blue-400' :
+                      line.includes('secure') ? 'text-amber-400 font-bold' :
+                      'text-slate-300'
+                    }`}>
+                      {line}
                     </span>
                   </motion.div>
                 ))}
@@ -342,7 +359,7 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
         >
           <h1 className="text-3xl font-black text-white mb-2 tracking-tight">System <span className="text-emerald-500">Upgrade</span></h1>
           <p className="text-slate-400 max-w-sm mb-10 leading-relaxed font-medium">
-            {settings.maintenance_message || "We're currently optimizing our systems to provide a smoother experience. We'll be back shortly!"}
+            {maintenanceSettings.maintenance_message || "We're currently optimizing our systems to provide a smoother experience. We'll be back shortly!"}
           </p>
           
           <div className="flex flex-col items-center gap-6">
