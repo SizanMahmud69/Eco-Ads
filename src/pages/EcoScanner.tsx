@@ -187,7 +187,13 @@ export default function EcoScanner() {
           scannedAt: serverTimestamp(),
           codeContent: trimmedCode
         }),
-        updateUser({ points: (user.points || 0) + points }),
+        updateUser({ 
+          points: increment(points) as any,
+          daily_plays: {
+            ...user.daily_plays,
+            eco_scan: (user.daily_plays?.eco_scan || 0) + 1
+          }
+        }),
         addDoc(collection(db, 'history'), {
           userId: user.uid,
           type: 'Eco Scan',

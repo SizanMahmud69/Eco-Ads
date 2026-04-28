@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { Play, Loader2, Sparkles, Tv, History as HistoryIcon, Clock } from 'lucide-react';
+import { Play, Loader2, Sparkles, Tv, History as HistoryIcon, Clock, ExternalLink } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, addDoc, increment, serverTimestamp, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
@@ -166,7 +166,7 @@ export default function WatchAds() {
       const match = url.match(regExp);
       if (match && match[2]) {
         const id = match[2];
-        return `https://www.youtube.com/embed/${id}?autoplay=1&rel=0`;
+        return `https://www.youtube.com/embed/${id}?autoplay=1&mute=1&rel=0`;
       }
       return url;
     }
@@ -294,15 +294,28 @@ export default function WatchAds() {
                   <p className="text-slate-500 text-sm font-medium">Watch the full video below to unlock your points.</p>
                 </div>
                 
-                <div className="relative aspect-video w-full rounded-2xl bg-slate-900 overflow-hidden border border-white/10 shadow-2xl group">
-                  <iframe 
-                    src={getEmbedUrl(currentVideo.url)}
-                    className="absolute inset-0 w-full h-full"
-                    allow="autoplay; encrypted-media; picture-in-picture"
-                    allowFullScreen
-                    title={currentVideo.title}
-                  />
-                </div>
+                  <div className="relative aspect-video w-full rounded-2xl bg-slate-900 overflow-hidden border border-white/10 shadow-2xl group">
+                    <iframe 
+                      src={getEmbedUrl(currentVideo.url)}
+                      className="absolute inset-0 w-full h-full"
+                      allow="autoplay; encrypted-media; picture-in-picture"
+                      allowFullScreen
+                      title={currentVideo.title}
+                    />
+                    {!videoEnded && (
+                      <div className="absolute bottom-4 right-4 z-10">
+                        <Button 
+                          variant="secondary" 
+                          size="sm" 
+                          className="bg-black/60 text-white border-white/10 backdrop-blur-sm text-[10px] h-8"
+                          onClick={() => window.open(currentVideo.url, '_blank')}
+                        >
+                          <ExternalLink size={12} className="mr-2" />
+                          Open Video
+                        </Button>
+                      </div>
+                    )}
+                  </div>
 
                 <div className="pt-4 space-y-4">
                   {videoEnded ? (

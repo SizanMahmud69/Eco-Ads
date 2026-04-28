@@ -13,7 +13,7 @@ import {
 import { motion } from 'motion/react';
 import { ReferralPopup } from '@/components/ReferralPopup';
 import { AdUnit } from '@/components/AdUnit';
-import { collection, query, where, getDocs, orderBy, limit, doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -108,6 +108,41 @@ export default function Dashboard() {
         });
 
         const displayTotalEarnings = Math.max(totalCalculatedEarned, Number(user?.points) || 0);
+        
+        // Auto-correct discrepancy: if total points calculated from history (minus withdrawals) 
+        // is higher than current user.points, sync it.
+        // But we must account for withdrawals.
+        const checkBalanceSync = async () => {
+          if (!user || !user.uid) return;
+          
+          try {
+            // Get withdrawals to find current expected balance
+            const wSnap = await getDocs(query(collection(db, 'withdrawals'), where('userId', '==', user.uid)));
+            let totalW = 0;
+            wSnap.forEach(doc => {
+              const d = doc.data();
+              if (d.status === 'approved') {
+                totalW += Number(d.amountPoints || d.amount || 0);
+              }
+            });
+            
+            const expectedBalance = Math.max(0, totalCalculatedEarned - totalW);
+            
+            // If discrepancy is large, sync it
+            if (expectedBalance > (user.points || 0)) {
+               console.log("Syncing balance: Expected", expectedBalance, "Current", user.points);
+               await updateDoc(doc(db, 'users', user.uid), {
+                 points: expectedBalance
+               });
+            }
+          } catch (e) {
+            console.error("Auto-sync error:", e);
+          }
+        };
+
+        if (totalCalculatedEarned > (user?.points || 0)) {
+           checkBalanceSync();
+        }
 
         const today = startOfDay(new Date());
         let earnedToday = 0;

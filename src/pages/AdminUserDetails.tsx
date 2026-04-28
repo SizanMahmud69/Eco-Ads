@@ -291,12 +291,60 @@ export default function AdminUserDetails() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                   <Button 
-                    variant="outline" 
-                    className="flex-1 md:flex-none border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white rounded-xl h-12"
-                    onClick={handleToggleFreeze}
-                   >
+                    <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                       <Button 
+                        variant="outline" 
+                        className="flex-1 md:flex-none border-indigo-500/20 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 rounded-xl h-12"
+                        onClick={async () => {
+                           if (!user) return;
+                           const confirmSync = confirm("This will recalculate the user balance based on their entire history and subtract their withdrawals. Proceed?");
+                           if (!confirmSync) return;
+                           
+                           setLoading(true);
+                           try {
+                              // Calculate earnings from history
+                              const historySnap = await getDocs(query(collection(db, 'history'), where('userId', '==', user.uid || user.id)));
+                              let totalEarned = 0;
+                              historySnap.forEach(doc => {
+                                 const pts = Number(doc.data().points);
+                                 if (!isNaN(pts) && pts > 0) totalEarned += pts;
+                              });
+
+                              // Calculate withdrawals
+                              const withdrawSnap = await getDocs(query(collection(db, 'withdrawals'), where('userId', '==', user.uid || user.id)));
+                              let totalWithdrawn = 0;
+                              withdrawSnap.forEach(doc => {
+                                 const d = doc.data();
+                                 if (d.status === 'approved') {
+                                    totalWithdrawn += Number(d.amountPoints || d.amount || 0);
+                                 }
+                              });
+
+                              const correctedBalance = Math.max(0, totalEarned - totalWithdrawn);
+                              
+                              // Use increment to reach the target balance if possible, or just set it as a one-time correction
+                              await updateDoc(doc(db, 'users', user.id), {
+                                 points: correctedBalance
+                              });
+                              
+                              setUser({ ...user, points: correctedBalance });
+                              toast.success(`Balance synced! New balance: ${correctedBalance}`);
+                           } catch (err) {
+                              console.error("Sync error:", err);
+                              toast.error("Failed to sync balance");
+                           } finally {
+                              setLoading(false);
+                           }
+                        }}
+                       >
+                         <RefreshCcw size={18} className="mr-2" />
+                         Sync Balance
+                       </Button>
+                       <Button 
+                        variant="outline" 
+                        className="flex-1 md:flex-none border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 hover:text-white rounded-xl h-12"
+                        onClick={handleToggleFreeze}
+                       >
                      {user.is_frozen ? <Zap size={18} className="mr-2" /> : <Snowflake size={18} className="mr-2" />}
                      {user.is_frozen ? 'Restore Account' : 'Freeze Access'}
                    </Button>
