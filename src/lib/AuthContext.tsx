@@ -2,7 +2,7 @@ import * as React from 'react';
 import { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
 import { onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { doc, onSnapshot, setDoc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, limit } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, limit, updateDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 
 interface User {
@@ -11,6 +11,9 @@ interface User {
   email: string;
   points: number;
   is_premium: boolean;
+  premium_expiry?: string | null;
+  planId?: string | null;
+  planName?: string | null;
   last_spin_at: string | null;
   last_scratch_at: string | null;
   last_daily_at: string | null;
@@ -85,6 +88,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return;
             }
 
+            // Check for premium expiry
+            if (userData.is_premium && userData.premium_expiry) {
+              const now = new Date();
+              const expiryDate = new Date(userData.premium_expiry);
+              if (now > expiryDate) {
+                await updateDoc(userRef, {
+                  is_premium: false,
+                  premium_expiry: null,
+                  planId: null,
+                  planName: null,
+                  multiplier: 1
+                });
+                toast.info('Your premium membership has expired and reverted to free user status.');
+                return; // Snapshot will trigger again
+              }
+            }
+
             // Daily plays reset logic
             const today = new Date().toISOString().split('T')[0];
             if (userData.last_play_reset_at !== today) {
@@ -99,7 +119,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   number_memory: 0,
                   watch_ads: 0
                 },
-                last_play_reset_at: today
+                last_play_reset_at: today,
+                profile_health: 100
               }, { merge: true });
               return; // The snapshot will trigger again after this update
             }
@@ -162,7 +183,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 number_memory: 0,
                 watch_ads: 0
               },
-              last_play_reset_at: new Date().toISOString().split('T')[0]
+              last_play_reset_at: new Date().toISOString().split('T')[0],
+              profile_health: 100
             };
             
             // Write public data to 'users' and private data to 'users_private'
@@ -246,7 +268,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           number_memory: 0,
           watch_ads: 0
         },
-        last_play_reset_at: new Date().toISOString().split('T')[0]
+        last_play_reset_at: new Date().toISOString().split('T')[0],
+        profile_health: 100
       };
       
       // Write public data to 'users' and private data to 'users_private'
