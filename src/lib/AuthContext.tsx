@@ -39,8 +39,10 @@ interface User {
     color_match?: number;
     number_memory?: number;
     watch_ads?: number;
+    eco_scan?: number;
   };
   last_play_reset_at?: string | null;
+  app_downloaded?: boolean;
 }
 
 interface AuthContextType {
@@ -117,7 +119,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   captcha: 0,
                   color_match: 0,
                   number_memory: 0,
-                  watch_ads: 0
+                  watch_ads: 0,
+                  eco_scan: 0
                 },
                 last_play_reset_at: today,
                 profile_health: 100
@@ -181,7 +184,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 captcha: 0,
                 color_match: 0,
                 number_memory: 0,
-                watch_ads: 0
+                watch_ads: 0,
+                eco_scan: 0
               },
               last_play_reset_at: new Date().toISOString().split('T')[0],
               profile_health: 100
@@ -266,7 +270,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           captcha: 0,
           color_match: 0,
           number_memory: 0,
-          watch_ads: 0
+          watch_ads: 0,
+          eco_scan: 0
         },
         last_play_reset_at: new Date().toISOString().split('T')[0],
         profile_health: 100
