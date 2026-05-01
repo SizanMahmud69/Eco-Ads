@@ -43,6 +43,7 @@ export interface GameSettings {
   bkash_number: string;
   nagad_number: string;
   rocket_number: string;
+  app_download_url?: string;
 }
 
 const defaultSettings: GameSettings = {
@@ -81,7 +82,8 @@ const defaultSettings: GameSettings = {
   registrations_enabled: true,
   bkash_number: '01700000000',
   nagad_number: '01700000000',
-  rocket_number: '01700000000'
+  rocket_number: '01700000000',
+  app_download_url: ''
 };
 
 export const useGameSettings = () => {
