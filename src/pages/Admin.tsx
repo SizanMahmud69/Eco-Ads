@@ -115,7 +115,8 @@ export default function Admin() {
     registrations_enabled: true,
     bkash_number: '01700000000',
     nagad_number: '01700000000',
-    rocket_number: '01700000000'
+    rocket_number: '01700000000',
+    app_download_url: ''
   });
   const [loading, setLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -1997,6 +1998,31 @@ export default function Admin() {
                             >
                               Save Maintenance Info
                             </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-4 p-4 bg-slate-900/50 rounded-xl border border-slate-700 transition-all hover:border-slate-600">
+                          <div>
+                            <p className="font-bold text-slate-200">App Download Link</p>
+                            <p className="text-xs text-slate-500 italic mb-2">Set the direct link for your mobile app (APK/Store)</p>
+                            <div className="flex gap-2">
+                              <Input 
+                                value={gameSettings.app_download_url || ''} 
+                                onChange={e => setGameSettings({...gameSettings, app_download_url: e.target.value})} 
+                                className="bg-slate-800 border-slate-700 text-slate-200"
+                                placeholder="https://..."
+                              />
+                              <Button 
+                                size="sm" 
+                                className="bg-indigo-600" 
+                                onClick={async () => {
+                                  await setDoc(doc(db, 'settings', 'game_points'), gameSettings);
+                                  toast.success('Download link updated');
+                                }}
+                              >
+                                Save
+                              </Button>
+                            </div>
                           </div>
                         </div>
 

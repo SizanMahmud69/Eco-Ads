@@ -8,7 +8,7 @@ import {
   Disc, Eraser, ListChecks, Wallet, TrendingUp, Users, Award, Zap, 
   Calculator, Brain, ShieldCheck, Palette, Eye, ArrowUpRight, 
   ArrowDownRight, Activity, Target, LayoutGrid, QrCode, Pickaxe, 
-  CheckCircle, ChevronRight
+  CheckCircle, ChevronRight, Download, AppWindow, Sparkles, Smartphone
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { ReferralPopup } from '@/components/ReferralPopup';
@@ -38,6 +38,7 @@ export default function Dashboard() {
     chartData: [] as any[],
   });
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
 
   // Prevent back navigation from dashboard
   useEffect(() => {
@@ -315,6 +316,67 @@ export default function Dashboard() {
         onClose={() => setShowReferralPopup(false)} 
       />
       
+      {/* Floating Download Button */}
+      {settings.app_download_url && !user?.app_downloaded && (
+        <motion.div
+          initial={{ scale: 0, opacity: 0, x: 100 }}
+          animate={{ scale: 1, opacity: 1, x: 0 }}
+          className="fixed bottom-24 right-4 sm:right-8 z-[90]"
+        >
+          <motion.div
+            animate={{ 
+              y: [0, -10, 0],
+            }}
+            transition={{ 
+              duration: 3, 
+              repeat: Infinity, 
+              ease: "easeInOut" 
+            }}
+          >
+            <Button
+              className="group relative h-16 w-16 md:h-20 md:w-20 rounded-full bg-gradient-to-br from-indigo-600 via-violet-600 to-fuchsia-600 p-0 shadow-2xl shadow-indigo-500/40 border-4 border-white/20 backdrop-blur-xl overflow-hidden"
+              onClick={async () => {
+                if (!user?.uid || !settings.app_download_url) return;
+                setDownloading(true);
+                try {
+                  // Mark as downloaded in Firestore
+                  await updateDoc(doc(db, 'users', user.uid), {
+                    app_downloaded: true
+                  });
+                  
+                  // Open download URL
+                  window.open(settings.app_download_url, '_blank');
+                  toast.success('Starting download...', {
+                    icon: '🚀'
+                  });
+                } catch (e) {
+                  console.error("Download error:", e);
+                  window.open(settings.app_download_url, '_blank');
+                } finally {
+                  setDownloading(false);
+                }
+              }}
+              disabled={downloading}
+            >
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.2),transparent)] opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="flex flex-col items-center justify-center gap-0.5">
+                <Smartphone className="w-5 h-5 md:w-6 md:h-6 text-white group-hover:scale-110 transition-transform" />
+                <span className="text-[8px] md:text-[9px] font-black text-white leading-none">GET APP</span>
+              </div>
+              
+              {/* Tooltip hint */}
+              <div className="absolute -top-12 right-0 bg-slate-900 border border-white/10 text-white text-[10px] font-bold py-1.5 px-3 rounded-xl whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none shadow-xl">
+                 Download Mobile App! 📱
+                <div className="absolute bottom-[-6px] right-6 w-3 h-3 bg-slate-900 rotate-45 border-r border-b border-white/10" />
+              </div>
+            </Button>
+          </motion.div>
+          
+          {/* Pulsing outer ring */}
+          <div className="absolute inset-0 rounded-full animate-ping bg-indigo-500/20 -z-10" />
+        </motion.div>
+      )}
+
       {/* 1. Dashboard Header */}
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 p-5 md:p-8 bg-white dark:bg-slate-900 rounded-[1.5rem] md:rounded-[2.5rem] shadow-xl shadow-slate-200/50 dark:shadow-none border border-slate-50 dark:border-slate-800 relative overflow-hidden w-full">
         <div className="flex items-center gap-4 md:gap-6 relative z-10 w-full overflow-hidden">
