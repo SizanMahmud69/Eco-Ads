@@ -1,14 +1,39 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { AdUnit } from '@/components/AdUnit';
 import { useGameSettings } from '@/hooks/useGameSettings';
-import { Disc, Eraser, ListChecks, ArrowRight, Pickaxe, Calculator, Brain, ShieldCheck, Palette, QrCode, Zap, Tv } from 'lucide-react';
+import { Disc, Eraser, ListChecks, ArrowRight, Pickaxe, Calculator, Brain, ShieldCheck, Palette, QrCode, Zap, Tv, Download, Gift, Loader2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/lib/AuthContext';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 
 export default function Eco() {
   const { settings } = useGameSettings();
+  const { user, updateUser } = useAuth();
+  const [claiming, setClaiming] = useState(false);
+  const navigate = useNavigate();
+
+  const handleClaimAppDownload = async () => {
+    if (!user || user.app_download_rewarded) return;
+    
+    setClaiming(true);
+    try {
+      const reward = settings.app_install_points || 200;
+      await updateUser({
+        points: (user.points || 0) + reward,
+        app_download_rewarded: true
+      });
+      toast.success(`Congratulations! You earned ${reward} points for downloading the app!`, {
+        icon: '🎁'
+      });
+    } catch (error) {
+      toast.error('Failed to claim reward');
+    } finally {
+      setClaiming(false);
+    }
+  };
+
   const activities = [
     { to: "/eco-scanner", icon: <QrCode className="text-emerald-500" />, title: "Eco Scanner", description: "Scan and identify ecological items to earn points.", isPremium: true },
     { to: "/spin", icon: <Disc className="text-blue-500" />, title: "Spin & Win", description: "Try your luck and win up to 50 points every 24 hours.", isPremium: false },
@@ -28,6 +53,42 @@ export default function Eco() {
         <h1 className="text-2xl font-bold">Eco Activities</h1>
         <p className="text-slate-500 text-sm">Choose an activity to start earning points.</p>
       </header>
+
+      {/* App Download Special Task */}
+      {(!user?.app_download_rewarded && settings.app_download_url) && (
+        <Card className="mx-2 bg-gradient-to-br from-indigo-600 to-violet-700 border-none shadow-xl shadow-indigo-500/20 overflow-hidden relative group">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-white/20 transition-all duration-500" />
+          <CardContent className="p-5 flex flex-col sm:flex-row items-center gap-4 relative z-10 text-white">
+            <div className="w-16 h-16 bg-white/20 rounded-2xl backdrop-blur-md flex items-center justify-center text-white shrink-0 shadow-inner">
+              <Download size={32} className="animate-bounce" />
+            </div>
+            <div className="flex-1 text-center sm:text-left">
+              <h3 className="text-lg font-black tracking-tight">App Installation Task</h3>
+              <p className="text-indigo-100 text-xs mt-1 leading-relaxed">
+                Download our official app and login to get an instant reward of <span className="font-bold text-yellow-300">{settings.app_install_points || 200} points</span>!
+              </p>
+            </div>
+            <div className="flex flex-col gap-2 w-full sm:w-auto">
+              <a 
+                href={settings.app_download_url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 bg-white text-indigo-700 px-6 py-2.5 rounded-xl text-sm font-black shadow-lg hover:bg-indigo-50 transition-all active:scale-95"
+              >
+                DOWNLOAD NOW
+              </a>
+              <Button 
+                onClick={handleClaimAppDownload}
+                disabled={claiming}
+                className="bg-emerald-500 hover:bg-emerald-600 text-white font-black text-xs h-10 rounded-xl"
+              >
+                {claiming ? <Loader2 className="animate-spin mr-2" size={14} /> : <Gift className="mr-2" size={14} />}
+                CLAIM REWARD
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4">
         {activities.slice(0, 3).map((activity) => (

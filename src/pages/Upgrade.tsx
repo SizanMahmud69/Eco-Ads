@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Check, Zap, Award, Loader2, X, Smartphone, CreditCard } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, onSnapshot, addDoc, serverTimestamp, doc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, doc, query, where, orderBy } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { AdUnit } from '@/components/AdUnit';
 import { useGameSettings } from '@/hooks/useGameSettings';
@@ -16,6 +16,7 @@ export default function Upgrade() {
   const { user } = useAuth();
   const { settings } = useGameSettings();
   const [plans, setPlans] = useState<any[]>([]);
+  const [userRequests, setUserRequests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedPlan, setSelectedPlan] = useState<any>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -27,21 +28,44 @@ export default function Upgrade() {
   const [paymentSettings, setPaymentSettings] = useState<any>({});
 
   useEffect(() => {
+    if (!user) return;
+
     const unsubSettings = onSnapshot(doc(db, 'settings', 'game_points'), (snapshot) => {
       if (snapshot.exists()) {
         setPaymentSettings(snapshot.data());
       }
     });
 
-    const unsubscribe = onSnapshot(collection(db, 'plans'), (snapshot) => {
+    const unsubscribePlans = onSnapshot(collection(db, 'plans'), (snapshot) => {
       setPlans(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'plans');
+    });
+
+    const unsubscribeRequests = onSnapshot(query(
+      collection(db, 'premium_requests'), 
+      where('userId', '==', user.uid),
+      orderBy('created_at', 'desc')
+    ), (snapshot) => {
+      setUserRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'premium_requests');
       setLoading(false);
     });
-    return () => unsubscribe();
-  }, []);
+
+    return () => {
+      unsubSettings();
+      unsubscribePlans();
+      unsubscribeRequests();
+    };
+  }, [user]);
+
+  const getPlanStatus = (planId: string) => {
+    const request = userRequests.find(r => r.planId === planId);
+    if (!request) return null;
+    return request.status;
+  };
 
   const handleUpgradeRequest = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,13 +143,25 @@ export default function Upgrade() {
                       </li>
                     ))}
                   </ul>
+
+                  {getPlanStatus(plan.id) && (
+                    <div className={`text-center py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-wider ${
+                      getPlanStatus(plan.id) === 'pending' ? 'bg-amber-100 text-amber-700 border border-amber-200' :
+                      getPlanStatus(plan.id) === 'approved' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' :
+                      'bg-red-100 text-red-700 border border-red-200'
+                    }`}>
+                      {getPlanStatus(plan.id) === 'pending' ? 'Request Pending' : 
+                       getPlanStatus(plan.id) === 'approved' ? 'Plan Active' : 'Request Rejected'}
+                    </div>
+                  )}
                   
                   <Button 
                     onClick={() => setSelectedPlan(plan)}
-                    disabled={user?.is_premium}
+                    disabled={user?.is_premium || getPlanStatus(plan.id) === 'pending' || getPlanStatus(plan.id) === 'approved'}
                     className={`w-full h-12 font-bold ${plan.multiplier > 1 ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-slate-800 hover:bg-slate-900'}`}
                   >
-                    {user?.is_premium ? 'Current Plan' : 'Upgrade Now'}
+                    {getPlanStatus(plan.id) === 'approved' ? 'Current Plan' : 
+                     getPlanStatus(plan.id) === 'pending' ? 'Processing...' : 'Upgrade Now'}
                   </Button>
                 </CardContent>
               </Card>

@@ -116,7 +116,8 @@ export default function Admin() {
     bkash_number: '01700000000',
     nagad_number: '01700000000',
     rocket_number: '01700000000',
-    app_download_url: ''
+    app_download_url: '',
+    app_install_points: 200
   });
   const [loading, setLoading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -947,7 +948,7 @@ export default function Admin() {
                             </TableCell>
                             <TableCell className="p-6 text-right">
                               {w.status === 'pending' && (
-                                <div className="flex justify-end gap-3 translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                                <div className="flex justify-end gap-3 transition-all duration-300">
                                   <Button size="icon" variant="outline" className="h-9 w-9 bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500 hover:text-white rounded-xl shadow-lg shadow-emerald-500/20" onClick={() => handleUpdateStatus(w.id, 'approved')}>
                                     <Check size={18} />
                                   </Button>
@@ -1409,7 +1410,7 @@ export default function Admin() {
                             </TableCell>
                             <TableCell className="p-6 text-right">
                               {request.status === 'pending' && (
-                                <div className="flex justify-end gap-3 translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                                <div className="flex justify-end gap-3 transition-all duration-300">
                                   <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 font-black uppercase text-[10px] tracking-widest rounded-xl px-4 py-2 shadow-lg shadow-emerald-500/20 transition-all active:scale-95" onClick={() => handleApprovePremium(request)}>
                                     <Check size={14} className="mr-1.5" /> Approve
                                   </Button>
@@ -1504,7 +1505,7 @@ export default function Admin() {
                             </TableCell>
                             <TableCell className="p-6 text-right">
                               {reward.status === 'pending' && (
-                                <div className="flex justify-end gap-3 translate-x-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-300">
+                                <div className="flex justify-end gap-3 transition-all duration-300">
                                   <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 font-black uppercase text-[10px] tracking-widest rounded-xl px-4 py-2 shadow-lg shadow-emerald-500/20 transition-all active:scale-95" onClick={() => handleApproveReferral(reward)}>
                                     <Check size={14} className="mr-1.5" /> Approve
                                   </Button>
@@ -2003,24 +2004,42 @@ export default function Admin() {
 
                         <div className="space-y-4 p-4 bg-slate-900/50 rounded-xl border border-slate-700 transition-all hover:border-slate-600">
                           <div>
-                            <p className="font-bold text-slate-200">App Download Link</p>
-                            <p className="text-xs text-slate-500 italic mb-2">Set the direct link for your mobile app (APK/Store)</p>
-                            <div className="flex gap-2">
-                              <Input 
-                                value={gameSettings.app_download_url || ''} 
-                                onChange={e => setGameSettings({...gameSettings, app_download_url: e.target.value})} 
-                                className="bg-slate-800 border-slate-700 text-slate-200"
-                                placeholder="https://..."
-                              />
+                            <p className="font-bold text-slate-200">App Download Settings</p>
+                            <p className="text-xs text-slate-500 italic mb-4">Set link and reward for app installation</p>
+                            
+                            <div className="space-y-4">
+                              <div className="space-y-2">
+                                <Label className="text-xs uppercase tracking-widest text-slate-500">Download URL</Label>
+                                <div className="flex gap-2">
+                                  <Input 
+                                    value={gameSettings.app_download_url || ''} 
+                                    onChange={e => setGameSettings({...gameSettings, app_download_url: e.target.value})} 
+                                    className="bg-slate-800 border-slate-700 text-slate-200"
+                                    placeholder="https://..."
+                                  />
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <Label className="text-xs uppercase tracking-widest text-slate-500">Installation Reward (Points)</Label>
+                                <div className="flex gap-2">
+                                  <Input 
+                                    type="number"
+                                    value={gameSettings.app_install_points || 0} 
+                                    onChange={e => setGameSettings({...gameSettings, app_install_points: parseInt(e.target.value) || 0})} 
+                                    className="bg-slate-800 border-slate-700 text-slate-200"
+                                  />
+                                </div>
+                              </div>
+
                               <Button 
-                                size="sm" 
-                                className="bg-indigo-600" 
+                                className="w-full bg-indigo-600 hover:bg-indigo-700 mt-2" 
                                 onClick={async () => {
                                   await setDoc(doc(db, 'settings', 'game_points'), gameSettings);
-                                  toast.success('Download link updated');
+                                  toast.success('App download settings updated');
                                 }}
                               >
-                                Save
+                                Save App Settings
                               </Button>
                             </div>
                           </div>
