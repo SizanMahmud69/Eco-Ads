@@ -77,7 +77,8 @@ service cloud.firestore {
       return data.keys().hasAll(['uid', 'username', 'points']) &&
              data.uid == request.auth.uid &&
              data.username is string && data.username.size() >= 3 && data.username.size() <= 20 &&
-             data.points is number && data.points >= 0;
+             data.points is number && data.points >= 0 &&
+             (!data.keys().contains('is_verified') || data.is_verified is bool);
     }
 
     function isValidReferralReward(data) {
@@ -107,14 +108,13 @@ service cloud.firestore {
       allow get: if isAuthenticated();
       allow list: if isAuthenticated() || (request.query.limit == 1);
       allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && 
-                       request.resource.data.uid == resource.data.uid) || isAdmin();
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || isAdmin();
     }
 
     match /users_private/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId) && request.resource.data.email == request.auth.token.email;
-      allow update: if isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isOwner(userId) || isAdmin();
       allow delete: if false;
     }
 

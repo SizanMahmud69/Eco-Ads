@@ -3,9 +3,19 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { fileURLToPath } from 'url';
+import nodemailer from 'nodemailer';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const db = new Database('earnpoint.db');
+
+// --- Email Config ---
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.VITE_SMTP_USER || 'pabnamart.contact@gmail.com', // Using user's email as default
+    pass: process.env.VITE_SMTP_PASS // They need to set this in App Settings
+  }
+});
 
 // Initialize Database
 db.exec(`
@@ -65,7 +75,42 @@ async function startServer() {
   const app = express();
   app.use(express.json());
 
-  // --- API Routes ---
+  // Email API
+  app.post('/api/send-otp', async (req, res) => {
+    const { email, otp, username } = req.body;
+    
+    if (!process.env.VITE_SMTP_PASS) {
+      console.warn("SMTP Password not set. Email not sent.");
+      return res.status(500).json({ error: "Email service not configured. Please contact admin." });
+    }
+
+    const mailOptions = {
+      from: `"Eco Ads Verification" <${process.env.VITE_SMTP_USER || 'pabnamart.contact@gmail.com'}>`,
+      to: email,
+      subject: `Your Verification Code: ${otp}`,
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 12px;">
+          <h2 style="color: #059669; text-align: center;">Eco Ads</h2>
+          <p>Hello <strong>${username || 'User'}</strong>,</p>
+          <p>Thank you for joining Eco Ads! Your account verification code is:</p>
+          <div style="background: #f0fdf4; padding: 20px; text-align: center; border-radius: 8px; margin: 25px 0;">
+            <h1 style="font-size: 40px; letter-spacing: 12px; margin: 0; color: #065f46;">${otp}</h1>
+          </div>
+          <p>This code will expire in 10 minutes. If you did not request this, please ignore this email.</p>
+          <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+          <p style="font-size: 12px; color: #64748b; text-align: center;">Developer: Sizan Mahmud | Eco Ads Team</p>
+        </div>
+      `
+    };
+
+    try {
+      await transporter.sendMail(mailOptions);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Email send error:", error);
+      res.status(500).json({ error: "Failed to send email" });
+    }
+  });
 
   // Auth (Simple for demo)
   app.post('/api/login', (req, res) => {
