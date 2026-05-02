@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Component, lazy, Suspense } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, Link, useLocation, useNavigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import { Toaster } from '@/components/ui/sonner';
 
@@ -8,6 +8,7 @@ import { Toaster } from '@/components/ui/sonner';
 const Login = lazy(() => import('@/pages/Login'));
 const Register = lazy(() => import('@/pages/Register'));
 const AdminLogin = lazy(() => import('@/pages/AdminLogin'));
+const VerifyEmail = lazy(() => import('@/pages/VerifyEmail'));
 const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Spin = lazy(() => import('@/pages/Spin'));
 const Scratch = lazy(() => import('@/pages/Scratch'));
@@ -275,6 +276,11 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   );
   if (!user) return <Navigate to="/login" replace />;
   
+  // Enforce email verification for non-admin users
+  if (!user.is_verified && !isAdmin) {
+    return <Navigate to="/verify-email" replace />;
+  }
+
   if (maintenance && !isAdmin) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0c] p-6 text-center overflow-hidden">
@@ -417,7 +423,7 @@ const AdminRoute = ({ children }: { children: React.ReactNode }) => {
   return user && isAdmin ? <>{children}</> : <Navigate to="/admin-login" replace />;
 };
 
-const Layout = ({ children }: { children: React.ReactNode }) => {
+const Layout = ({ children }: { children?: React.ReactNode }) => {
   const { user, logout, isAdmin } = useAuth();
   const { settings } = useGameSettings();
 
@@ -536,7 +542,7 @@ const Layout = ({ children }: { children: React.ReactNode }) => {
         <div className="max-w-4xl w-full mx-auto p-4 sm:p-8 flex-1 flex flex-col w-full">
           <div className="flex-1">
             <PageTransition key={useLocation().pathname}>
-              {children}
+              {children || <Outlet />}
             </PageTransition>
           </div>
           <AppFooter />
@@ -618,26 +624,31 @@ export default function App() {
             <Routes>
               <Route path="/login" element={<PageTransition><Login /></PageTransition>} />
               <Route path="/register" element={<PageTransition><Register /></PageTransition>} />
+              <Route path="/verify-email" element={<PageTransition><VerifyEmail /></PageTransition>} />
               <Route path="/admin-login" element={<PageTransition><AdminLogin /></PageTransition>} />
               <Route path="/privacy-policy" element={<PageTransition><PrivacyPolicy /></PageTransition>} />
               <Route path="/terms-conditions" element={<PageTransition><TermsConditions /></PageTransition>} />
-              <Route path="/" element={<PrivateRoute><Layout><Dashboard /></Layout></PrivateRoute>} />
-              <Route path="/eco" element={<PrivateRoute><Layout><Eco /></Layout></PrivateRoute>} />
-              <Route path="/mining" element={<PrivateRoute><Layout><Mining /></Layout></PrivateRoute>} />
-              <Route path="/upgrade" element={<PrivateRoute><Layout><Upgrade /></Layout></PrivateRoute>} />
-              <Route path="/refer" element={<PrivateRoute><Layout><Refer /></Layout></PrivateRoute>} />
-              <Route path="/profile" element={<PrivateRoute><Layout><Profile /></Layout></PrivateRoute>} />
-              <Route path="/spin" element={<PrivateRoute><Layout><Spin /></Layout></PrivateRoute>} />
-              <Route path="/scratch" element={<PrivateRoute><Layout><Scratch /></Layout></PrivateRoute>} />
-              <Route path="/tasks" element={<PrivateRoute><Layout><Tasks /></Layout></PrivateRoute>} />
-              <Route path="/math-quiz" element={<PrivateRoute><Layout><MathQuiz /></Layout></PrivateRoute>} />
-              <Route path="/word-guess" element={<PrivateRoute><Layout><WordGuess /></Layout></PrivateRoute>} />
-              <Route path="/captcha" element={<PrivateRoute><Layout><Captcha /></Layout></PrivateRoute>} />
-              <Route path="/eco-scanner" element={<PrivateRoute><Layout><EcoScanner /></Layout></PrivateRoute>} />
-              <Route path="/color-match" element={<PrivateRoute><Layout><ColorMatch /></Layout></PrivateRoute>} />
-              <Route path="/watch-ads" element={<PrivateRoute><Layout><WatchAds /></Layout></PrivateRoute>} />
-              <Route path="/withdraw" element={<PrivateRoute><Layout><Withdraw /></Layout></PrivateRoute>} />
-              <Route path="/wallet" element={<PrivateRoute><Layout><WalletPage /></Layout></PrivateRoute>} />
+              
+              <Route element={<PrivateRoute><Layout /></PrivateRoute>}>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/eco" element={<Eco />} />
+                <Route path="/mining" element={<Mining />} />
+                <Route path="/upgrade" element={<Upgrade />} />
+                <Route path="/refer" element={<Refer />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/spin" element={<Spin />} />
+                <Route path="/scratch" element={<Scratch />} />
+                <Route path="/tasks" element={<Tasks />} />
+                <Route path="/math-quiz" element={<MathQuiz />} />
+                <Route path="/word-guess" element={<WordGuess />} />
+                <Route path="/captcha" element={<Captcha />} />
+                <Route path="/eco-scanner" element={<EcoScanner />} />
+                <Route path="/color-match" element={<ColorMatch />} />
+                <Route path="/watch-ads" element={<WatchAds />} />
+                <Route path="/withdraw" element={<Withdraw />} />
+                <Route path="/wallet" element={<WalletPage />} />
+              </Route>
+
               <Route path="/admin" element={<AdminRoute><PageTransition><Admin /></PageTransition></AdminRoute>} />
               <Route path="/admin/users/:userId" element={<AdminRoute><PageTransition><AdminUserDetails /></PageTransition></AdminRoute>} />
             </Routes>
