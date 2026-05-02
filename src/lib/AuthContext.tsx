@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { createContext, useContext, useState, useEffect } from 'react';
 import { auth, db, handleFirestoreError, OperationType } from './firebase';
-import { onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, sendEmailVerification } from 'firebase/auth';
 import { doc, onSnapshot, setDoc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, limit, updateDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
 
@@ -9,6 +9,7 @@ interface User {
   uid: string;
   username: string;
   email: string;
+  is_verified: boolean;
   points: number;
   is_premium: boolean;
   premium_expiry?: string | null;
@@ -26,6 +27,7 @@ interface User {
   referral_bonus_earned?: number;
   referrals_count?: number;
   referral_milestone_rewarded?: boolean;
+  app_download_rewarded?: boolean;
   multiplier?: number;
   is_frozen?: boolean;
   is_banned?: boolean;
@@ -53,6 +55,9 @@ interface AuthContextType {
   registerWithEmail: (email: string, pass: string, username: string, referralCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
+  checkVerificationStatus: () => Promise<void>;
+  verifyOTP: (otp: string) => Promise<boolean>;
+  resendOTP: () => Promise<void>;
   isAdmin: boolean;
   showReferralPopup: boolean;
   setShowReferralPopup: (show: boolean) => void;
@@ -129,7 +134,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             // Merge email from Auth into the user state for app-wide compatibility
-            setUser({ ...userData, email: firebaseUser.email || '' });
+            setUser({ 
+              ...userData, 
+              email: firebaseUser.email || '',
+              is_verified: userData.is_verified === true || firebaseUser.emailVerified === true
+            });
 
             // Check for referral milestone (1000 points)
             if (userData.points >= 1000 && userData.referred_by && !userData.referral_milestone_rewarded) {
@@ -163,6 +172,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const newUser: any = {
               uid: firebaseUser.uid,
               username: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+              is_verified: true, // Google users are already verified
               points: 0,
               is_premium: false,
               last_spin_at: null,
@@ -249,6 +259,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newUser: any = {
         uid: firebaseUser.uid,
         username: username,
+        is_verified: false,
         points: 0,
         is_premium: false,
         last_spin_at: null,
@@ -277,11 +288,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profile_health: 100
       };
       
+      // Generate a 6-digit OTP
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      
       // Write public data to 'users' and private data to 'users_private'
       await Promise.all([
         setDoc(userRef, newUser),
-        setDoc(doc(db, 'users_private', firebaseUser.uid), { email: email })
+        setDoc(doc(db, 'users_private', firebaseUser.uid), { 
+          email: email,
+          otp: otp,
+          otp_created_at: new Date().toISOString()
+        })
       ]);
+
+      // Send OTP via backend
+      try {
+        await fetch('/api/send-otp', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, otp, username })
+        });
+        toast.success('Verification code sent to your email!');
+      } catch (e) {
+        console.error("Failed to send OTP email:", e);
+        toast.error('Account created, but failed to send verification email. Please try resending from the verification page.');
+      }
 
       // Increment referrer's referral count
       if (referralCode) {
@@ -327,6 +358,59 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const checkVerificationStatus = async () => {
+    if (auth.currentUser) {
+      await auth.currentUser.reload();
+      const updatedUser = auth.currentUser;
+      if (user) {
+        setUser({ ...user, is_verified: updatedUser.emailVerified });
+      }
+    }
+  };
+
+  const verifyOTP = async (otp: string): Promise<boolean> => {
+    if (!user) return false;
+    try {
+      const privateRef = doc(db, 'users_private', user.uid);
+      const privateSnap = await getDoc(privateRef);
+      if (privateSnap.exists()) {
+        const data = privateSnap.data();
+        if (data.otp === otp) {
+          // Mark as verified
+          await updateDoc(doc(db, 'users', user.uid), {
+            is_verified: true
+          });
+          return true;
+        }
+      }
+      return false;
+    } catch (error) {
+      console.error("OTP verification error:", error);
+      return false;
+    }
+  };
+
+  const resendOTP = async () => {
+    if (!user) return;
+    try {
+      const otp = Math.floor(100000 + Math.random() * 900000).toString();
+      await updateDoc(doc(db, 'users_private', user.uid), {
+        otp: otp,
+        otp_created_at: new Date().toISOString()
+      });
+      
+      await fetch('/api/send-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, otp, username: user.username })
+      });
+      toast.success('New code sent!');
+    } catch (error) {
+      console.error("Resend OTP error:", error);
+      toast.error('Failed to resend code');
+    }
+  };
+
   const isAdmin = user?.email === 'pabnamart.contact@gmail.com' || user?.email === 'admin@ecoads.com';
 
   return (
@@ -338,6 +422,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       registerWithEmail, 
       logout, 
       updateUser, 
+      checkVerificationStatus,
+      verifyOTP,
+      resendOTP,
       isAdmin,
       showReferralPopup,
       setShowReferralPopup
