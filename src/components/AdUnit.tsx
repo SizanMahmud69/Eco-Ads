@@ -61,56 +61,66 @@ export const AdUnit: React.FC<AdUnitProps> = ({
     code.includes('at.effect') || 
     code.includes('socbar') || 
     code.includes('popunder') || 
+    code.includes('social') ||
+    code.includes('highratecpm.com') ||
+    code.includes('topcreativeformat.com') ||
     code.includes('clickadilla') ||
     isVideoAd ||
     overlay
   );
 
   useEffect(() => {
-    if (!code || !isVisible || isAdminPanel || isAdmin) return;
+    if (!code || !isVisible || isAdminPanel || isAdmin) {
+       // Only cleanup if we are explicitly turning off or in admin
+       if (isAdminPanel || isAdmin) {
+         const socialBars = document.querySelectorAll('[id^="at-social-bar"], .at-social-bar, [class*="social-bar"], [id^="at-cv-"]');
+         socialBars.forEach(el => (el as HTMLElement).style.display = 'none');
+       }
+       return;
+    }
+    
+    // Check if this specific ad code already exists globally to prevent duplicates
+    // Especially for Social Bars which often manage their own state
+    if (isFixedAd && document.querySelector(`script[data-ad-code-hash="${btoa(code).substring(0, 32)}"]`)) {
+      setIsLoading(false);
+      return;
+    }
     
     // Small delay to ensure DOM is ready especially inside AnimatePresence
     const timer = setTimeout(() => {
       if (!adRef.current) return;
       setIsLoading(false);
 
-      // Clear previous ad
+      // Clear previous ad container content but NOT global elements if it's a fixed ad we want to persist
       adRef.current.innerHTML = '';
 
       // If it's a fixed ad (popunder, social bar), we render it safely
       if (isFixedAd) {
         try {
-          // Robust injection using contextual fragment for better cross-network support
           const range = document.createRange();
           range.setStart(adRef.current, 0);
           const fragment = range.createContextualFragment(code);
           adRef.current.appendChild(fragment);
           
-          // Re-execute scripts manually because fragments don't auto-execute <script> tags when appended to DOM
           const scripts = adRef.current.querySelectorAll('script');
           scripts.forEach(oldScript => {
             const newScript = document.createElement('script');
-            // Copy all attributes
             Array.from(oldScript.attributes).forEach(attr => {
               newScript.setAttribute(attr.name, attr.value);
             });
-            // Copy content
             newScript.innerHTML = oldScript.innerHTML;
             if (oldScript.src) {
               newScript.src = oldScript.src;
               newScript.async = true;
             }
             
-            // Mark it so we can clean it up
+            // Mark it so we can identify it
             newScript.setAttribute('data-ad-uid', uid);
+            newScript.setAttribute('data-ad-code-hash', btoa(code).substring(0, 32));
             
-            // Standard ads often prefer body or head
-            // For video/social bars, we use a more balanced approach
             if (oldScript.src) {
-              // Network scripts usually need to be global
               document.head.appendChild(newScript);
-            } else if (isVideoAd || code.includes('socbar')) {
-              // Initialization scripts for video/bars usually need to stay near the container
+            } else if (isVideoAd || code.includes('socbar') || code.includes('social')) {
               adRef.current?.appendChild(newScript);
             } else {
               document.body.appendChild(newScript);
