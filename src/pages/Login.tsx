@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
-import { Leaf, Mail, Lock } from 'lucide-react';
+import { Leaf, Mail, Lock, Shield } from 'lucide-react';
 import { AdUnit } from '@/components/AdUnit';
 import { useGameSettings } from '@/hooks/useGameSettings';
 
@@ -53,8 +53,15 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-emerald-50/30 p-4 gap-6">
-      <Card className="w-full max-w-md border-b-4 border-emerald-500/20 shadow-xl">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-emerald-50/30 p-4 gap-6 relative">
+      <Card className="w-full max-w-md border-b-4 border-emerald-500/20 shadow-xl relative overflow-hidden">
+        <Link 
+          to="/admin-login" 
+          className="absolute top-4 right-4 p-2 text-slate-300 hover:text-emerald-500 transition-all hover:bg-emerald-50 rounded-lg group"
+          title="Admin Login"
+        >
+          <Shield size={20} className="group-hover:scale-110 transition-transform" />
+        </Link>
         <CardHeader className="text-center pb-2">
           <div className="mx-auto w-16 h-16 bg-emerald-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-emerald-500/20 mb-4">
             <Leaf size={32} />
