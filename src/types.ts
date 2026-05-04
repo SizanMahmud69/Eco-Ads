@@ -1,13 +1,50 @@
 export interface User {
   uid: string;
+  username: string;
   email: string;
-  displayName: string;
+  is_verified: boolean;
   points: number;
-  isPremium: boolean;
-  createdAt: string;
-  lastSpinAt?: string;
-  lastScratchAt?: string;
-  lastDailyCheckIn?: string;
+  is_premium: boolean;
+  premium_expiry?: string | null;
+  planId?: string | null;
+  planName?: string | null;
+  last_spin_at: any;
+  last_scratch_at: any;
+  last_daily_at: any;
+  last_task_at: any;
+  last_math_quiz_at?: any;
+  last_captcha_at?: any;
+  last_word_guess_at?: any;
+  last_color_match_at?: any;
+  last_number_memory_at?: any;
+  last_watch_ads_at?: any;
+  last_eco_scan_at?: any;
+  completed_tasks?: string[];
+  created_at: string;
+  role?: string;
+  referred_by?: string | null;
+  referral_code?: string;
+  referral_bonus_earned?: number;
+  referrals_count?: number;
+  referral_milestone_rewarded?: boolean;
+  app_download_rewarded?: boolean;
+  multiplier?: number;
+  is_frozen?: boolean;
+  is_banned?: boolean;
+  profile_health?: number;
+  daily_plays?: {
+    spin?: number;
+    scratch?: number;
+    math_quiz?: number;
+    word_guess?: number;
+    captcha?: number;
+    color_match?: number;
+    number_memory?: number;
+    watch_ads?: number;
+    eco_scan?: number;
+  };
+  last_play_reset_at?: string | null;
+  app_downloaded?: boolean;
 }
 
 export interface Withdrawal {
