@@ -88,9 +88,10 @@ export default function AdminUserDetails() {
         }
 
         const userData: any = { id: userDoc.id, ...userDoc.data() };
+        const effectiveUid = userData.uid || userDoc.id;
         
         try {
-          const privateDoc = await getDoc(doc(db, 'users_private', userId));
+          const privateDoc = await getDoc(doc(db, 'users_private', userDoc.id));
           if (privateDoc.exists()) {
             userData.private = privateDoc.data();
           }
@@ -103,7 +104,7 @@ export default function AdminUserDetails() {
         // Notifications
         const notifQuery = query(
           collection(db, 'notifications'),
-          where('userId', '==', userData.uid),
+          where('userId', '==', effectiveUid),
           orderBy('createdAt', 'desc'),
           limit(10)
         );
@@ -113,7 +114,7 @@ export default function AdminUserDetails() {
         // Payments
         const payQuery = query(
           collection(db, 'withdrawals'),
-          where('userId', '==', userData.uid),
+          where('userId', '==', effectiveUid),
           orderBy('created_at', 'desc'),
           limit(10)
         );
@@ -280,12 +281,12 @@ export default function AdminUserDetails() {
                   <div className="pb-2 space-y-1">
                     <div className="flex items-center gap-3">
                       <h2 className="text-3xl font-black text-white tracking-tight">{user.username}</h2>
-                      {user.email_verified && <ShieldCheck size={24} className="text-emerald-400" />}
+                      {user.is_verified && <ShieldCheck size={24} className="text-emerald-400 shadow-[0_0_15px_rgba(52,211,153,0.3)]" />}
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-[10px] bg-white/5 py-1 px-2 rounded-lg text-slate-400 border border-white/5 font-mono tracking-widest">{user.uid}</span>
-                      <Badge variant="outline" className={user.is_banned ? 'border-red-500/50 text-red-400' : 'border-emerald-500/50 text-emerald-400'}>
-                        {user.is_banned ? 'Suspended' : 'Verified Member'}
+                      <span className="text-[10px] bg-white/5 py-1 px-2 rounded-lg text-slate-400 border border-white/5 font-mono tracking-widest">{user.uid || user.id}</span>
+                      <Badge variant="outline" className={user.is_verified ? 'border-emerald-500/50 text-emerald-400' : 'border-red-500/50 text-red-400'}>
+                        {user.is_verified ? 'Verified Citizen' : 'Unverified Identity'}
                       </Badge>
                     </div>
                   </div>

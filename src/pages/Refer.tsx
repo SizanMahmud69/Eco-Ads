@@ -34,8 +34,52 @@ export default function Refer() {
   }, [user?.referral_code]);
 
   const copyToClipboard = () => {
-    navigator.clipboard.writeText(referralCode);
-    toast.success('Referral code copied!');
+    if (!referralCode || referralCode === 'LOADING...') {
+      toast.error('Code not ready yet');
+      return;
+    }
+
+    try {
+      // Primary method: modern clipboard API
+      navigator.clipboard.writeText(referralCode)
+        .then(() => {
+          toast.success('Referral code copied!');
+        })
+        .catch((err) => {
+          console.warn('Clipboard API failed, trying fallback:', err);
+          fallbackCopyText(referralCode);
+        });
+    } catch (err) {
+      fallbackCopyText(referralCode);
+    }
+  };
+
+  const fallbackCopyText = (text: string) => {
+    try {
+      const textArea = document.createElement('textarea');
+      textArea.value = text;
+      
+      // Ensure the textarea is not visible but part of the document
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-9999px';
+      textArea.style.top = '0';
+      document.body.appendChild(textArea);
+      
+      textArea.focus();
+      textArea.select();
+      
+      const success = document.execCommand('copy');
+      document.body.removeChild(textArea);
+      
+      if (success) {
+        toast.success('Referral code copied!');
+      } else {
+        toast.error('Failed to copy code. Please copy it manually.');
+      }
+    } catch (err) {
+      console.error('Fallback copy failed:', err);
+      toast.error('Failed to copy code. Please copy it manually.');
+    }
   };
 
   const handleShare = async () => {
@@ -48,11 +92,19 @@ export default function Refer() {
     try {
       if (navigator.share) {
         await navigator.share(shareData);
+        toast.success('Shared successfully!');
       } else {
         copyToClipboard();
       }
-    } catch (err) {
-      console.error('Error sharing:', err);
+    } catch (err: any) {
+      // AbortError is typical when user cancels share
+      if (err.name === 'AbortError') {
+        toast.info('Share canceled. You can copy the code instead.');
+        copyToClipboard();
+      } else {
+        console.error('Error sharing:', err);
+        copyToClipboard();
+      }
     }
   };
 

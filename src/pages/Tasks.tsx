@@ -129,7 +129,7 @@ export default function Tasks() {
       const userRef = doc(db, 'users', user.uid);
       await updateDoc(userRef, {
         points: increment(task.points_reward),
-        last_task_at: now,
+        last_task_at: serverTimestamp(),
         completed_tasks: arrayUnion(task.id)
       });
 

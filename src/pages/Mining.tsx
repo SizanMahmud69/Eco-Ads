@@ -46,17 +46,20 @@ export default function Mining() {
     if (!activeSession) return;
 
     const interval = setInterval(() => {
+      if (!activeSession.start_at) return;
+      
       const now = Date.now();
-      const end = new Date(activeSession.end_at).getTime();
-      const start = new Date(activeSession.start_at).getTime();
-      const total = end - start;
+      const start = activeSession.start_at.toMillis ? activeSession.start_at.toMillis() : new Date(activeSession.start_at).getTime();
+      const durationMs = (activeSession.duration_hours || 4) * 60 * 60 * 1000;
+      const end = start + durationMs;
+      
+      const total = durationMs;
       const remaining = Math.max(0, end - now);
       
       setTimeLeft(remaining);
       setProgress(((total - remaining) / total) * 100);
 
       if (remaining <= 0 && activeSession.status === 'active') {
-        // Update status to completed in Firestore
         const sessionRef = doc(db, 'mining_sessions', activeSession.id);
         updateDoc(sessionRef, { status: 'completed' }).catch(console.error);
       }
@@ -69,20 +72,19 @@ export default function Mining() {
     if (!user) return;
     setLoading(true);
     try {
-      const duration = 4 * 60 * 60 * 1000; // 4 hours
+      // Duration in hours - use number for rule checking later
+      const durationHours = 4;
       const points = Math.floor(20 * (user?.multiplier || 1));
-      const start = new Date();
-      const end = new Date(start.getTime() + duration);
-
+      
       await addDoc(collection(db, 'mining_sessions'), {
         userId: user.uid,
-        start_at: start.toISOString(),
-        end_at: end.toISOString(),
+        start_at: serverTimestamp(),
+        duration_hours: durationHours,
         points_to_claim: points,
         status: 'active'
       });
 
-      toast.success('Mining started! Come back in 4 hours to claim your points.');
+      toast.success(`Mining started! Come back in ${durationHours} hours to claim your points.`);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'mining_sessions');
       toast.error('Failed to start mining');
@@ -96,8 +98,12 @@ export default function Mining() {
     setLoading(true);
     try {
       const points = activeSession.points_to_claim;
-      
-      await addDoc(collection(db, 'history'), {
+      const { writeBatch, doc } = await import('firebase/firestore');
+      const batch = writeBatch(db);
+
+      // 1. Add to history
+      const historyRef = doc(collection(db, 'history'));
+      batch.set(historyRef, {
         userId: user.uid,
         type: 'task',
         points: points,
@@ -105,11 +111,18 @@ export default function Mining() {
         description: 'Mining Reward'
       });
 
-      await updateUser({
-        points: increment(points) as any
+      // 2. Update user points and last_task_at for rule compliance
+      const userRef = doc(db, 'users', user.uid);
+      batch.update(userRef, {
+        points: increment(points),
+        last_task_at: serverTimestamp()
       });
 
-      await deleteDoc(doc(db, 'mining_sessions', activeSession.id));
+      // 3. Delete the session (Atomic)
+      const sessionRef = doc(db, 'mining_sessions', activeSession.id);
+      batch.delete(sessionRef);
+
+      await batch.commit();
       
       toast.success(`Claimed ${points} points!`);
     } catch (error) {

@@ -8,7 +8,7 @@ import { SCRATCH_COOLDOWN } from '@/constants';
 import confetti from 'canvas-confetti';
 import { AdUnit } from '@/components/AdUnit';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, increment, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, increment, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { History as HistoryIcon } from 'lucide-react';
 
 import { useGameSettings } from '@/hooks/useGameSettings';
@@ -53,18 +53,40 @@ export default function Scratch() {
   useEffect(() => {
     const calculateTimeLeft = () => {
       if (!user?.last_scratch_at) return 0;
-      const lastScratch = new Date(user.last_scratch_at).getTime();
+      
+      let lastScratchTime: number;
+      try {
+        if (user.last_scratch_at && typeof user.last_scratch_at.toMillis === 'function') {
+          lastScratchTime = user.last_scratch_at.toMillis();
+        } else if (user.last_scratch_at instanceof Date) {
+          lastScratchTime = user.last_scratch_at.getTime();
+        } else if (typeof user.last_scratch_at === 'number') {
+          lastScratchTime = user.last_scratch_at;
+        } else {
+          lastScratchTime = new Date(user.last_scratch_at).getTime();
+        }
+      } catch (e) {
+        return 0;
+      }
+      
+      if (isNaN(lastScratchTime)) return 0;
+
       const now = Date.now();
-      const cooldownMs = (settings.scratch_cooldown || 30) * 60 * 1000;
-      const diff = cooldownMs - (now - lastScratch);
+      const cooldownMinutes = settings.scratch_cooldown || 30;
+      const cooldownMs = cooldownMinutes * 60 * 1000;
+      const diff = cooldownMs - (now - lastScratchTime);
       return Math.max(0, diff);
     };
 
-    setTimeLeft(calculateTimeLeft());
-
-    const timer = setInterval(() => {
+    const updateTimer = () => {
       const remaining = calculateTimeLeft();
       setTimeLeft(remaining);
+      return remaining;
+    };
+
+    updateTimer();
+    const timer = setInterval(() => {
+      const remaining = updateTimer();
       if (remaining <= 0) clearInterval(timer);
     }, 1000);
 
@@ -78,26 +100,33 @@ export default function Scratch() {
     return `${minutes}m ${seconds}s`;
   };
 
-  const canScratch = timeLeft <= 0 && (user?.daily_plays?.scratch || 0) < (settings.daily_game_limit || 3) && (user?.profile_health ?? 100) >= 10;
+  const dailyLimit = 3; // Enforce limit of 3
+  const currentPlays = user?.daily_plays?.scratch || 0;
+  const canScratch = timeLeft <= 0 && currentPlays < dailyLimit;
 
   const handleScratchResult = async (points: number) => {
     if (!user) return;
     setLoading(true);
     try {
-      await addDoc(collection(db, 'history'), {
+      if (currentPlays >= dailyLimit) {
+        toast.error('Daily limit reached (3/3)');
+        setLoading(false);
+        return;
+      }
+
+      const historyRef = collection(db, 'history');
+      await addDoc(historyRef, {
         userId: user.uid,
         type: 'scratch',
         points: points,
         created_at: serverTimestamp()
       });
 
-      await updateUser({
-        points: increment(points) as any,
-        last_scratch_at: new Date().toISOString(),
-        daily_plays: {
-          ...user.daily_plays,
-          scratch: (user.daily_plays?.scratch || 0) + 1
-        }
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        points: increment(points),
+        last_scratch_at: serverTimestamp(),
+        'daily_plays.scratch': increment(1)
       });
       // User requested animation: "paper cards red blue yellow green paper like top from bottom falling"
       confetti({
@@ -110,8 +139,10 @@ export default function Scratch() {
         ticks: 300
       });
       toast.success(`You won ${points} points!`);
-    } catch (error) {
-      toast.error('Failed to update points');
+    } catch (error: any) {
+      console.error('Scratch update error:', error);
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      toast.error('Points update failed. Please try again.');
     } finally {
       setLoading(false);
     }

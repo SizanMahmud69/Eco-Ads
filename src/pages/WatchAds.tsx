@@ -227,6 +227,7 @@ export default function WatchAds() {
 
       await updateUser({
         points: increment(reward) as any,
+        last_watch_ads_at: serverTimestamp(),
         daily_plays: {
           ...user.daily_plays,
           watch_ads: (user.daily_plays?.watch_ads || 0) + 1

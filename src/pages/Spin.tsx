@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { SPIN_COOLDOWN } from '@/constants';
 import { AdUnit } from '@/components/AdUnit';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, increment, doc, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, where, orderBy, limit, onSnapshot, serverTimestamp, increment, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { History as HistoryIcon, Sparkles } from 'lucide-react';
 
 import { useGameSettings } from '@/hooks/useGameSettings';
@@ -68,19 +68,43 @@ export default function Spin() {
   useEffect(() => {
     const calculateTimeLeft = () => {
       if (!user?.last_spin_at) return 0;
-      const lastSpin = new Date(user.last_spin_at).getTime();
+      
+      let lastSpinTime: number;
+      try {
+        if (user.last_spin_at && typeof user.last_spin_at.toMillis === 'function') {
+          lastSpinTime = user.last_spin_at.toMillis();
+        } else if (user.last_spin_at instanceof Date) {
+          lastSpinTime = user.last_spin_at.getTime();
+        } else if (typeof user.last_spin_at === 'number') {
+          lastSpinTime = user.last_spin_at;
+        } else {
+          lastSpinTime = new Date(user.last_spin_at).getTime();
+        }
+      } catch (e) {
+        return 0;
+      }
+
+      if (isNaN(lastSpinTime)) return 0;
+
       const now = Date.now();
-      const cooldownMs = (settings.spin_cooldown || 60) * 60 * 1000;
-      const diff = cooldownMs - (now - lastSpin);
+      const cooldownMinutes = settings.spin_cooldown || 60;
+      const cooldownMs = cooldownMinutes * 60 * 1000;
+      const diff = cooldownMs - (now - lastSpinTime);
       return Math.max(0, diff);
     };
 
-    setTimeLeft(calculateTimeLeft());
-
-    const timer = setInterval(() => {
+    const updateTimer = () => {
       const remaining = calculateTimeLeft();
       setTimeLeft(remaining);
-      if (remaining <= 0) clearInterval(timer);
+      return remaining;
+    };
+
+    updateTimer();
+    const timer = setInterval(() => {
+      const remaining = updateTimer();
+      if (remaining <= 0) {
+        clearInterval(timer);
+      }
     }, 1000);
 
     return () => clearInterval(timer);
@@ -88,40 +112,44 @@ export default function Spin() {
 
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000);
-    const hours = Math.floor(totalSeconds / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
-
-    if (hours > 0) {
-      return `${hours}h ${minutes}m ${seconds}s`;
-    }
     return `${minutes}m ${seconds}s`;
   };
 
-  const canSpin = timeLeft <= 0 && (user?.daily_plays?.spin || 0) < (settings.daily_game_limit || 3) && (user?.profile_health ?? 100) >= 10;
+  const dailyLimit = 3; // Enforce limit of 3
+  const currentPlays = user?.daily_plays?.spin || 0;
+  const canSpin = timeLeft <= 0 && currentPlays < dailyLimit;
 
   const handleSpinResult = async (points: number) => {
     if (!user) return;
     setLoading(true);
     try {
-      await addDoc(collection(db, 'history'), {
+      if (currentPlays >= dailyLimit) {
+        toast.error('Daily limit reached (3/3)');
+        setLoading(false);
+        return;
+      }
+      
+      const historyRef = collection(db, 'history');
+      await addDoc(historyRef, {
         userId: user.uid,
         type: 'spin',
         points: points,
         created_at: serverTimestamp()
       });
 
-      await updateUser({
-        points: increment(points) as any,
-        last_spin_at: new Date().toISOString(),
-        daily_plays: {
-          ...user.daily_plays,
-          spin: (user.daily_plays?.spin || 0) + 1
-        }
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        points: increment(points),
+        last_spin_at: serverTimestamp(),
+        'daily_plays.spin': increment(1)
       });
       toast.success(`You won ${points} points!`);
-    } catch (error) {
-      toast.error('Failed to update points');
+    } catch (error: any) {
+      console.error('Spin update error:', error);
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+      toast.error('Points update failed. Please try again.');
     } finally {
       setLoading(false);
     }

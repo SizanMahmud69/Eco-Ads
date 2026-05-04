@@ -74,6 +74,7 @@ export default function WordGuess() {
 
         await updateUser({
           points: increment(reward) as any,
+          last_word_guess_at: serverTimestamp(),
           daily_plays: {
             ...user?.daily_plays,
             word_guess: (user?.daily_plays?.word_guess || 0) + 1

@@ -61,6 +61,7 @@ export default function Captcha() {
 
         await updateUser({
           points: increment(reward) as any,
+          last_captcha_at: serverTimestamp(),
           daily_plays: {
             ...user?.daily_plays,
             captcha: (user?.daily_plays?.captcha || 0) + 1

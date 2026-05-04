@@ -88,6 +88,7 @@ export default function ColorMatch() {
 
         await updateUser({
           points: increment(totalReward) as any,
+          last_color_match_at: serverTimestamp(),
           daily_plays: {
             ...user?.daily_plays,
             color_match: (user?.daily_plays?.color_match || 0) + 1

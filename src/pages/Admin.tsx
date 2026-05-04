@@ -401,6 +401,58 @@ export default function Admin() {
     }
   };
 
+  const handleDeleteUser = async (userId: string, username: string) => {
+    const confirmDelete = confirm(`Are you sure you want to PERMANENTLY delete user "${username}"? This action cannot be undone and will delete all user data.`);
+    if (!confirmDelete) return;
+
+    const secondConfirm = confirm(`Final Warning: All points, referrals, and history for "${username}" will be erased. Type OK to confirm.`);
+    if (!secondConfirm) return;
+
+    setLoading(true);
+    try {
+      const { writeBatch, collection, query, where, getDocs, doc, deleteDoc } = await import('firebase/firestore');
+      const batch = writeBatch(db);
+      
+      // 1. Delete notifications
+      const notifSnap = await getDocs(query(collection(db, 'notifications'), where('userId', '==', userId)));
+      notifSnap.forEach(d => batch.delete(d.ref));
+      
+      // 2. Delete withdrawals
+      const withdrawSnap = await getDocs(query(collection(db, 'withdrawals'), where('userId', '==', userId)));
+      withdrawSnap.forEach(d => batch.delete(d.ref));
+      
+      // 3. Delete mining sessions
+      const miningSnap = await getDocs(query(collection(db, 'mining_sessions'), where('userId', '==', userId)));
+      miningSnap.forEach(d => batch.delete(d.ref));
+      
+      // 4. Delete history
+      const historySnap = await getDocs(query(collection(db, 'history'), where('userId', '==', userId)));
+      historySnap.forEach(d => batch.delete(d.ref));
+      
+      // 5. Delete referral rewards where user is involved
+      const referrerRewardsSnap = await getDocs(query(collection(db, 'referral_rewards'), where('referrerId', '==', userId)));
+      referrerRewardsSnap.forEach(d => batch.delete(d.ref));
+      const referredRewardsSnap = await getDocs(query(collection(db, 'referral_rewards'), where('referredId', '==', userId)));
+      referredRewardsSnap.forEach(d => batch.delete(d.ref));
+
+      await batch.commit();
+
+      // 6. Delete user documents
+      await deleteDoc(doc(db, 'users', userId));
+      try {
+        await deleteDoc(doc(db, 'users_private', userId));
+      } catch (e) {}
+
+      setUsers(prev => prev.filter(u => u.id !== userId));
+      toast.success(`User ${username} and all associated data deleted successfully.`);
+    } catch (error: any) {
+      console.error("Delete error:", error);
+      toast.error(`Failed to delete user: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleResetHealth = async (userId: string) => {
     try {
       const userRef = doc(db, 'users', userId);
@@ -992,6 +1044,7 @@ export default function Admin() {
                         <TableRow className="border-slate-700/50">
                           <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Username</TableHead>
                           <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Email</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6 text-center">Verification</TableHead>
                           <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Balance</TableHead>
                           <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Referral Code</TableHead>
                           <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Status</TableHead>
@@ -1002,8 +1055,27 @@ export default function Admin() {
                       <TableBody>
                         {users.map((u) => (
                           <TableRow key={u.id} className="border-slate-700/50 hover:bg-slate-700/20 transition-colors group">
-                            <TableCell className="p-6 font-bold text-slate-200 group-hover:text-white">{u.username}</TableCell>
+                            <TableCell className="p-6 font-bold text-slate-200 group-hover:text-white flex items-center gap-2">
+                              {u.username}
+                              {u.is_verified ? (
+                                <div className="p-1 rounded-full bg-emerald-500/10 text-emerald-400" title="Email Verified">
+                                  <ShieldCheck size={14} />
+                                </div>
+                              ) : (
+                                <div className="p-1 rounded-full bg-red-500/10 text-red-500" title="Email Not Verified">
+                                  <X size={14} />
+                                </div>
+                              )}
+                            </TableCell>
                             <TableCell className="p-6 text-slate-400 text-sm">{usersPrivate[u.id] || u.email || 'N/A'}</TableCell>
+                            <TableCell className="p-6 text-center">
+                              <Badge className={`px-2 py-1 font-black text-[10px] uppercase tracking-tighter ${
+                                u.is_verified ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-red-500/20 text-red-500 border-red-500/30'
+                              }`}>
+                                {u.is_verified ? <Check size={10} className="mr-1 inline" /> : <X size={10} className="mr-1 inline" />}
+                                {u.is_verified ? 'Verified' : 'Unverified'}
+                              </Badge>
+                            </TableCell>
                             <TableCell className="p-6">
                               <span className="font-black text-indigo-400 bg-indigo-500/5 px-3 py-1.5 rounded-lg border border-indigo-500/10">
                                 {u.points?.toLocaleString() || 0} PTS
@@ -1043,7 +1115,7 @@ export default function Admin() {
                                   <div className="px-3 pb-2 pt-2 text-[10px] font-black uppercase tracking-widest text-slate-500">User Management</div>
                                   <DropdownMenuSeparator className="bg-slate-800" />
                                   
-                                  <DropdownMenuItem onClick={() => navigate('/admin/users/' + u.id)} className="hover:bg-indigo-500/10 hover:text-indigo-400 cursor-pointer rounded-xl py-3 px-4 transition-colors">
+                                  <DropdownMenuItem onClick={() => navigate(`/admin/users/${u.uid || u.id}`)} className="hover:bg-indigo-500/10 hover:text-indigo-400 cursor-pointer rounded-xl py-3 px-4 transition-colors">
                                     <Info size={16} className="mr-3" /> <span className="font-bold text-sm">Full Profile</span>
                                   </DropdownMenuItem>
                                   
@@ -1070,6 +1142,14 @@ export default function Admin() {
                                   >
                                     {u.is_banned ? <UserCheck size={16} className="mr-3" /> : <UserX size={16} className="mr-3" />}
                                     <span className="font-bold text-sm">{u.is_banned ? 'Restore User' : 'Ban User Permanently'}</span>
+                                  </DropdownMenuItem>
+
+                                  <DropdownMenuItem 
+                                    onClick={() => handleDeleteUser(u.id, u.username)} 
+                                    className="hover:bg-red-500/10 hover:text-red-500 cursor-pointer rounded-xl py-3 px-4 transition-colors text-red-500"
+                                  >
+                                    <Trash2 size={16} className="mr-3" />
+                                    <span className="font-bold text-sm">Delete Account</span>
                                   </DropdownMenuItem>
                                 </DropdownMenuContent>
                               </DropdownMenu>

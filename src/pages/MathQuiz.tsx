@@ -7,7 +7,7 @@ import confetti from 'canvas-confetti';
 import { Calculator, Timer, CheckCircle2, XCircle, Loader2, Sparkles } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, addDoc, increment, doc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, increment, doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'motion/react';
 import { AdUnit } from '@/components/AdUnit';
 
@@ -25,7 +25,51 @@ export default function MathQuiz() {
   const [lastResult, setLastResult] = useState<'correct' | 'wrong' | null>(null);
 
   const rewardPoints = settings.math_quiz_points || 2;
-  const dailyLimit = settings.daily_game_limit || 3;
+  const dailyLimit = 3; // Enforce limit of 3
+  const [cooldownTime, setCooldownTime] = useState(0);
+
+  useEffect(() => {
+    const checkCooldown = () => {
+      if (!user?.last_math_quiz_at) return 0;
+      
+      let lastQuizTime: number;
+      try {
+        if (user.last_math_quiz_at && typeof user.last_math_quiz_at.toMillis === 'function') {
+          lastQuizTime = user.last_math_quiz_at.toMillis();
+        } else if (user.last_math_quiz_at instanceof Date) {
+          lastQuizTime = user.last_math_quiz_at.getTime();
+        } else if (typeof user.last_math_quiz_at === 'number') {
+          lastQuizTime = user.last_math_quiz_at;
+        } else {
+          lastQuizTime = new Date(user.last_math_quiz_at).getTime();
+        }
+      } catch (e) {
+        return 0;
+      }
+
+      if (isNaN(lastQuizTime)) return 0;
+
+      const now = Date.now();
+      const cooldownMinutes = settings.math_quiz_cooldown || 2;
+      const cooldownMs = cooldownMinutes * 60 * 1000;
+      const diff = cooldownMs - (now - lastQuizTime);
+      return Math.max(0, diff);
+    };
+
+    const updateTimer = () => {
+      const rem = checkCooldown();
+      setCooldownTime(rem);
+      return rem;
+    };
+
+    updateTimer();
+    const timer = setInterval(() => {
+      const rem = updateTimer();
+      if (rem <= 0) clearInterval(timer);
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [user?.last_math_quiz_at, settings.math_quiz_cooldown]);
 
   const generateProblem = () => {
     const ops = ['+', '-', '*'];
@@ -65,7 +109,15 @@ export default function MathQuiz() {
 
   const startGame = () => {
     if ((user?.profile_health ?? 100) < 10) {
-      toast.error("Low Health! Your profile health must be at least 10% to play. It will refill tomorrow.");
+      toast.error("Low Health! Your profile health must be at least 10% to play.");
+      return;
+    }
+    if (cooldownTime > 0) {
+      toast.error(`Please wait ${Math.ceil(cooldownTime / 1000)}s before playing again.`);
+      return;
+    }
+    if ((user?.daily_plays?.math_quiz || 0) >= dailyLimit) {
+      toast.error("Daily limit reached.");
       return;
     }
     setIsPlaying(true);
@@ -76,12 +128,19 @@ export default function MathQuiz() {
 
   const handleGameOver = async () => {
     setIsPlaying(false);
+    const currentPlays = user?.daily_plays?.math_quiz || 0;
     if (score > 0) {
       setLoading(true);
       try {
+        if (currentPlays >= dailyLimit) {
+          toast.error('Daily limit reached (3/3)');
+          setLoading(false);
+          return;
+        }
         const reward = score * rewardPoints * (user?.multiplier || 1);
         
-        await addDoc(collection(db, 'history'), {
+        const historyRef = collection(db, 'history');
+        await addDoc(historyRef, {
           userId: user?.uid,
           type: 'math_quiz',
           points: reward,
@@ -89,15 +148,14 @@ export default function MathQuiz() {
           created_at: serverTimestamp()
         });
 
-        await updateUser({
-          points: increment(reward) as any,
-          daily_plays: {
-            ...user?.daily_plays,
-            math_quiz: (user?.daily_plays?.math_quiz || 0) + 1
-          }
+        const userRef = doc(db, 'users', user?.uid);
+        await updateDoc(userRef, {
+          points: increment(reward),
+          last_math_quiz_at: serverTimestamp(),
+          'daily_plays.math_quiz': increment(1)
         });
 
-        // User requested animation: "paper cards red blue yellow green paper like top from bottom falling"
+        // User requested animation
         confetti({
           particleCount: 150,
           spread: 80,
@@ -109,9 +167,12 @@ export default function MathQuiz() {
         });
 
         toast.success(`Game Over! You earned ${reward} points.`);
-      } catch (error) {
-        console.error("Error saving quiz reward:", error);
-        toast.error('Failed to save reward');
+      } catch (error: any) {
+        console.error('Math quiz update error:', error);
+        if (user?.uid) {
+          handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}`);
+        }
+        toast.error('Points update failed. Please try again.');
       } finally {
         setLoading(false);
       }
@@ -141,7 +202,14 @@ export default function MathQuiz() {
     }
   };
 
-  const canPlay = (user?.daily_plays?.math_quiz || 0) < dailyLimit;
+  const canPlay = (user?.daily_plays?.math_quiz || 0) < dailyLimit && cooldownTime <= 0;
+
+  const formatCooldown = (ms: number) => {
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const rs = s % 60;
+    return `${m}m ${rs}s`;
+  };
 
   return (
     <div className="max-w-md mx-auto space-y-6">
@@ -162,9 +230,10 @@ export default function MathQuiz() {
         <Card className="border-2 border-blue-100 shadow-xl overflow-hidden">
           <CardContent className="p-8 text-center space-y-6">
             <div className="space-y-2">
-              <h2 className="text-xl font-bold">Ready to test your brain?</h2>
-              <p className="text-slate-400 text-sm">You have 15 seconds for each problem. One wrong answer ends the game.</p>
-              {!canPlay && <p className="text-red-500 font-bold">Daily limit reached! Come back tomorrow.</p>}
+              <p className="text-xl font-bold">Ready to test your brain?</p>
+              <p className="text-slate-400 text-sm">You have 15 seconds for each problem. One wrong answer ends the game. {dailyLimit} plays daily.</p>
+              {(user?.daily_plays?.math_quiz || 0) >= dailyLimit && <p className="text-red-500 font-bold">Daily limit reached! Come back tomorrow.</p>}
+              {cooldownTime > 0 && <p className="text-amber-500 font-bold">Cooldown: {formatCooldown(cooldownTime)}</p>}
             </div>
             <Button 
               onClick={startGame} 
@@ -172,7 +241,7 @@ export default function MathQuiz() {
               disabled={loading || !canPlay}
             >
               {loading ? <Loader2 className="animate-spin mr-2" /> : <Sparkles className="mr-2" />}
-              {canPlay ? 'START CHALLENGE' : 'LIMIT REACHED'}
+              {cooldownTime > 0 ? `WAIT ${formatCooldown(cooldownTime)}` : (canPlay ? 'START CHALLENGE' : 'LIMIT REACHED')}
             </Button>
           </CardContent>
         </Card>

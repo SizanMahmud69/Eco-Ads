@@ -104,6 +104,7 @@ export default function NumberMemory() {
 
       await updateUser({
         points: increment(points) as any,
+        last_number_memory_at: serverTimestamp(),
         daily_plays: {
           ...user?.daily_plays,
           number_memory: (user?.daily_plays?.number_memory || 0) + 1
