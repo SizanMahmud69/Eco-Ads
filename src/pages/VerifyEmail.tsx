@@ -10,7 +10,7 @@ import { toast } from 'sonner';
 import { motion } from 'motion/react';
 
 export default function VerifyEmail() {
-  const { user, logout, verifyOTP, resendOTP } = useAuth();
+  const { user, loading, logout, verifyOTP, resendOTP } = useAuth();
   const navigate = useNavigate();
   const [isResending, setIsResending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -18,10 +18,22 @@ export default function VerifyEmail() {
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   useEffect(() => {
+    if (!loading && !user) {
+      navigate('/login', { replace: true });
+    }
     if (user?.is_verified) {
       navigate('/', { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, loading, navigate]);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login', { replace: true });
+    } catch (error) {
+      toast.error('Failed to logout');
+    }
+  };
 
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) {
@@ -191,7 +203,7 @@ export default function VerifyEmail() {
 
           <CardFooter className="flex flex-col gap-6 border-t border-slate-800/50 pt-8 pb-10 bg-slate-900/60 transition-all">
             <button 
-              onClick={() => logout()}
+              onClick={handleLogout}
               className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-500 hover:text-red-400 transition-colors group"
             >
               <LogOut className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />

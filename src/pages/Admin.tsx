@@ -198,7 +198,7 @@ export default function Admin() {
   useEffect(() => {
     if (!isAdmin) return;
 
-    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+    const unsubUsers = onSnapshot(query(collection(db, 'users'), orderBy('created_at', 'desc')), (snapshot) => {
       const userData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setUsers(userData);
       const totalPoints = userData.reduce((acc: number, u: any) => acc + (u.points || 0), 0);
