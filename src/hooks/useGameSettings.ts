@@ -19,6 +19,7 @@ export interface GameSettings {
   daily_point_limit: number;
   spin_cooldown: number;
   scratch_cooldown: number;
+  math_quiz_cooldown: number;
   maintenance_mode: boolean;
   maintenance_message?: string;
   maintenance_duration?: number;
@@ -64,6 +65,7 @@ const defaultSettings: GameSettings = {
   daily_point_limit: 2000,
   spin_cooldown: 60,
   scratch_cooldown: 30,
+  math_quiz_cooldown: 2,
   maintenance_mode: false,
   ad_popunder: '',
   ad_social_bar: '',
