@@ -74,18 +74,24 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
-      return data.keys().hasAll(['uid', 'username', 'points']) &&
-             data.uid == request.auth.uid &&
+      return data.uid == request.auth.uid &&
              data.username is string && data.username.size() >= 3 && data.username.size() <= 20 &&
              data.points is number && data.points >= 0 &&
              (!data.keys().contains('is_verified') || data.is_verified is bool);
     }
 
+    function isValidUserPrivate(data) {
+      return data.keys().hasAll(['email']) &&
+             data.email is string &&
+             (!data.keys().contains('otp') || (data.otp is string && data.otp.size() == 6)) &&
+             (!data.keys().contains('otp_created_at') || data.otp_created_at is string);
+    }
+
     function isValidReferralReward(data) {
       return data.keys().hasAll(['referrerId', 'referredId', 'referredUsername', 'bonusAmount', 'status', 'created_at']) &&
              data.referredId == request.auth.uid &&
-             data.bonusAmount == 500 &&
-             data.status == 'pending' &&
+             data.bonusAmount is number && data.bonusAmount > 0 &&
+             data.status in ['pending', 'claimed'] &&
              isValidDateString(data.created_at);
     }
 
@@ -113,8 +119,8 @@ service cloud.firestore {
 
     match /users_private/{userId} {
       allow read: if isOwner(userId) || isAdmin();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUserPrivate(request.resource.data);
+      allow update: if (isOwner(userId) && isValidUserPrivate(request.resource.data)) || isAdmin();
       allow delete: if false;
     }
 
@@ -158,7 +164,7 @@ service cloud.firestore {
     match /referral_rewards/{rewardId} {
       allow read: if isAuthenticated() && (resource.data.referrerId == request.auth.uid || resource.data.referredId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && isValidReferralReward(request.resource.data);
-      allow update: if isAdmin();
+      allow update: if isAdmin() || (isAuthenticated() && resource.data.referrerId == request.auth.uid && request.resource.data.status == 'claimed');
       allow delete: if isAdmin();
     }
 

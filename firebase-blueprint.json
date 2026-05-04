@@ -41,10 +41,12 @@
     },
     "UserPrivate": {
       "title": "UserPrivate",
-      "description": "Sensitive user data",
+      "description": "Sensitive user data including OTP",
       "type": "object",
       "properties": {
-        "email": { "type": "string" }
+        "email": { "type": "string" },
+        "otp": { "type": "string" },
+        "otp_created_at": { "type": "string", "format": "date-time" }
       },
       "required": ["email"]
     },
