@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { toast } from 'sonner';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
@@ -58,17 +59,31 @@ export interface FirestoreErrorInfo {
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: any = {
+  const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     operationType,
-    path
+    path,
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL,
+      })) || []
+    }
   };
   
-  if (errInfo.error.includes('insufficient permissions')) {
-    console.warn(`[Firestore Permission Denied]: ${operationType} on ${path}. This is expected if the user doesn't have access.`);
-  } else if (errInfo.error.includes('index')) {
-    console.error(`[Firestore Index Error]: ${operationType} on ${path}. This query requires a composite index. Details:`, error);
-  } else {
-    console.error(`[Firestore Error]: ${operationType} on ${path}:`, error);
+  const errorJson = JSON.stringify(errInfo);
+  console.error('Firestore Error:', errorJson);
+  
+  if (errInfo.error.includes('permissions')) {
+    toast.error('Permission denied. Please try again or re-login.');
   }
+
+  throw new Error(errorJson);
 }

@@ -5,47 +5,7 @@ import { onAuthStateChanged, signOut, GoogleAuthProvider, signInWithPopup, signI
 import { doc, onSnapshot, setDoc, getDoc, collection, query, where, getDocs, addDoc, serverTimestamp, limit, updateDoc, increment } from 'firebase/firestore';
 import { toast } from 'sonner';
 
-interface User {
-  uid: string;
-  username: string;
-  email: string;
-  is_verified: boolean;
-  points: number;
-  is_premium: boolean;
-  premium_expiry?: string | null;
-  planId?: string | null;
-  planName?: string | null;
-  last_spin_at: string | null;
-  last_scratch_at: string | null;
-  last_daily_at: string | null;
-  last_task_at: string | null;
-  completed_tasks?: string[];
-  created_at: string;
-  role?: string;
-  referred_by?: string | null;
-  referral_code?: string;
-  referral_bonus_earned?: number;
-  referrals_count?: number;
-  referral_milestone_rewarded?: boolean;
-  app_download_rewarded?: boolean;
-  multiplier?: number;
-  is_frozen?: boolean;
-  is_banned?: boolean;
-  profile_health?: number;
-  daily_plays?: {
-    spin?: number;
-    scratch?: number;
-    math_quiz?: number;
-    word_guess?: number;
-    captcha?: number;
-    color_match?: number;
-    number_memory?: number;
-    watch_ads?: number;
-    eco_scan?: number;
-  };
-  last_play_reset_at?: string | null;
-  app_downloaded?: boolean;
-}
+import { User } from '@/types';
 
 interface AuthContextType {
   user: User | null;
