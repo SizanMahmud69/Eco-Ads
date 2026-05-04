@@ -79,17 +79,28 @@ async function startServer() {
   app.post('/api/send-otp', async (req, res) => {
     const { email, otp, username } = req.body;
     
-    if (!process.env.VITE_SMTP_PASS) {
+    const smtpUser = process.env.SMTP_USER || process.env.VITE_SMTP_USER || 'pabnamart.contact@gmail.com';
+    const smtpPass = process.env.SMTP_PASS || process.env.VITE_SMTP_PASS;
+
+    if (!smtpPass) {
       console.warn("SMTP Password not set. Email not sent.");
       return res.status(500).json({ error: "Email service not configured. Please contact admin." });
     }
 
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: smtpUser,
+        pass: smtpPass
+      }
+    });
+
     const mailOptions = {
-      from: `"Eco Ads Verification" <${process.env.VITE_SMTP_USER || 'pabnamart.contact@gmail.com'}>`,
+      from: `"Eco Ads Verification" <${smtpUser}>`,
       to: email,
       subject: `Your Verification Code: ${otp}`,
       html: `
-        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; rounded: 12px;">
+        <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e2e8f0; border-radius: 12px;">
           <h2 style="color: #059669; text-align: center;">Eco Ads</h2>
           <p>Hello <strong>${username || 'User'}</strong>,</p>
           <p>Thank you for joining Eco Ads! Your account verification code is:</p>
