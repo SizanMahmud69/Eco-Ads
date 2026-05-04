@@ -10,13 +10,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { email, otp, username } = req.body;
 
   // Configuration check
-  const smtpUser = process.env.VITE_SMTP_USER || 'pabnamart.contact@gmail.com';
-  const smtpPass = process.env.VITE_SMTP_PASS;
+  const smtpUser = process.env.SMTP_USER || process.env.VITE_SMTP_USER || 'pabnamart.contact@gmail.com';
+  let smtpPass = process.env.SMTP_PASS || process.env.VITE_SMTP_PASS;
+
+  // Clean up password (remove spaces if any from App Password)
+  if (smtpPass) {
+    smtpPass = smtpPass.replace(/\s/g, '');
+  }
 
   if (!smtpPass) {
     console.error("SMTP Password not set in environment variables");
     return res.status(500).json({ 
-      error: "Email service not configured. Please ensure VITE_SMTP_PASS is set in Vercel environment variables." 
+      error: "Email service not configured. Please ensure VITE_SMTP_PASS or SMTP_PASS is set in Vercel environment variables." 
     });
   }
 
