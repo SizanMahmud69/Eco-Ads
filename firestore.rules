@@ -55,8 +55,8 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && 
-        (request.auth.token.get('email', '') == "pabnamart.contact@gmail.com" ||
-         request.auth.token.get('email', '') == "admin@ecoads.com" ||
+        (request.auth.token.email == "pabnamart.contact@gmail.com" ||
+         request.auth.token.email == "admin@ecoads.com" ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', 'user') == 'admin'));
     }
@@ -74,10 +74,12 @@ service cloud.firestore {
     // ===============================================================
 
     function isValidUser(data) {
-      return data.uid == request.auth.uid &&
-             data.username is string && data.username.size() >= 3 && data.username.size() <= 20 &&
-             data.points is number && data.points >= 0 &&
-             (!data.keys().contains('is_verified') || data.is_verified is bool);
+      return (data.get('points', 0) is number);
+    }
+
+    function isGameUpdateValid(existing, incoming) {
+      let pts_diff = incoming.get('points', 0) - existing.get('points', 0);
+      return (pts_diff <= 10000);
     }
 
     function isValidUserPrivate(data) {
@@ -106,15 +108,18 @@ service cloud.firestore {
              isValidDateString(data.created_at);
     }
 
-    // ===============================================================
-    // Rules
-    // ===============================================================
-
     match /users/{userId} {
       allow get: if isAuthenticated();
       allow list: if isAuthenticated() || (request.query.limit == 1);
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if (isOwner(userId) && isValidUser(request.resource.data)) || isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isAdmin() || (
+        isOwner(userId) && 
+        isValidUser(request.resource.data) &&
+        // Secure Game Play and Point Increment
+        isGameUpdateValid(resource.data, request.resource.data) &&
+        // Prevent upgrading self roles via simple client update
+        (request.resource.data.get('role', 'user') == resource.data.get('role', 'user'))
+      );
     }
 
     match /users_private/{userId} {
@@ -143,14 +148,26 @@ service cloud.firestore {
 
     match /mining_sessions/{sessionId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && 
+                      request.resource.data.userId == request.auth.uid &&
+                      request.resource.data.status == 'active' &&
+                      request.resource.data.start_at == request.time &&
+                      request.resource.data.duration_hours is number &&
+                      request.resource.data.duration_hours >= 1;
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) &&
+                      (request.resource.data.status == 'completed' ? 
+                        request.time >= resource.data.start_at + duration.value(resource.data.duration_hours, 'h') : 
+                        true);
+      allow delete: if isAuthenticated() && 
+                      (isAdmin() || (
+                        resource.data.userId == request.auth.uid &&
+                        request.time >= resource.data.start_at + duration.value(resource.data.duration_hours, 'h')
+                      ));
     }
 
     match /history/{historyId} {
-      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read: if isAuthenticated() && (resource.data.get('userId', '') == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.get('userId', '') == request.auth.uid;
       allow update, delete: if false;
     }
 
@@ -164,7 +181,12 @@ service cloud.firestore {
     match /referral_rewards/{rewardId} {
       allow read: if isAuthenticated() && (resource.data.referrerId == request.auth.uid || resource.data.referredId == request.auth.uid || isAdmin());
       allow create: if isAuthenticated() && isValidReferralReward(request.resource.data);
-      allow update: if isAdmin() || (isAuthenticated() && resource.data.referrerId == request.auth.uid && request.resource.data.status == 'claimed');
+      allow update: if isAdmin() || (
+        isAuthenticated() && 
+        resource.data.referrerId == request.auth.uid && 
+        request.resource.data.status == 'claimed' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+      );
       allow delete: if isAdmin();
     }
 

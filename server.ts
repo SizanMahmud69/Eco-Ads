@@ -80,7 +80,11 @@ async function startServer() {
     const { email, otp, username } = req.body;
     
     const smtpUser = process.env.SMTP_USER || process.env.VITE_SMTP_USER || 'pabnamart.contact@gmail.com';
-    const smtpPass = process.env.SMTP_PASS || process.env.VITE_SMTP_PASS;
+    let smtpPass = process.env.SMTP_PASS || process.env.VITE_SMTP_PASS;
+
+    if (smtpPass) {
+      smtpPass = smtpPass.replace(/\s/g, '');
+    }
 
     if (!smtpPass) {
       console.warn("SMTP Password not set. Email not sent.");
