@@ -12,9 +12,10 @@ interface AuthContextType {
   loading: boolean;
   loginWithGoogle: () => Promise<void>;
   loginWithEmail: (email: string, pass: string) => Promise<void>;
-  registerWithEmail: (email: string, pass: string, username: string, referralCode?: string) => Promise<void>;
+  registerWithEmail: (email: string, pass: string, username: string, phone: string, referralCode?: string) => Promise<void>;
   logout: () => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
+  updateActivity: () => Promise<void>;
   checkVerificationStatus: () => Promise<void>;
   verifyOTP: (otp: string) => Promise<boolean>;
   resendOTP: () => Promise<void>;
@@ -268,7 +269,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const registerWithEmail = async (email: string, pass: string, username: string, referralCode?: string) => {
+  const registerWithEmail = async (email: string, pass: string, username: string, phone: string, referralCode?: string) => {
     try {
       const { user: firebaseUser } = await createUserWithEmailAndPassword(auth, email, pass);
       const userRef = doc(db, 'users', firebaseUser.uid);
@@ -276,6 +277,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newUser: any = {
         uid: firebaseUser.uid,
         username: username,
+        phone: phone,
         is_verified: false,
         points: 0,
         is_premium: false,
@@ -372,6 +374,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const updateActivity = async () => {
+    if (!user) return;
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        last_active_at: serverTimestamp()
+      });
+    } catch (error) {
+      // Silently fail to avoid disrupting user experience
+      console.warn("Activity update failed", error);
+    }
+  };
+
   const checkVerificationStatus = async () => {
     if (auth.currentUser) {
       await auth.currentUser.reload();
@@ -432,7 +447,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const isAdmin = user?.email === 'pabnamart.contact@gmail.com' || user?.email === 'admin@ecoads.com';
+  const isAdmin = user?.email === 'pabnamart.contact@gmail.com' || user?.email === 'admin@ecoads.com' || user?.role === 'admin';
 
   return (
     <AuthContext.Provider value={{ 
@@ -443,6 +458,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       registerWithEmail, 
       logout, 
       updateUser, 
+      updateActivity,
       checkVerificationStatus,
       verifyOTP,
       resendOTP,
