@@ -32,6 +32,8 @@ export interface User {
   is_frozen?: boolean;
   is_banned?: boolean;
   profile_health?: number;
+  phone?: string;
+  last_active_at?: any;
   daily_plays?: {
     spin?: number;
     scratch?: number;
