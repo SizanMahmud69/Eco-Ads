@@ -22,6 +22,7 @@
         "referral_bonus_earned": { "type": "number", "description": "Total points earned from referrals" },
         "referrals_count": { "type": "number", "description": "Total number of users referred" },
         "referral_milestone_rewarded": { "type": "boolean", "description": "Whether the referrer has been rewarded for this user reaching the milestone" },
+        "phone": { "type": "string", "description": "User's phone number" },
         "daily_plays": { 
           "type": "object", 
           "description": "Daily play counts for each game",
