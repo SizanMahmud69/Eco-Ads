@@ -14,7 +14,7 @@ import { AdUnit } from '@/components/AdUnit';
 import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function MathQuiz() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const [problem, setProblem] = useState({ a: 0, b: 0, op: '+', answer: 0 });
   const [userAnswer, setUserAnswer] = useState('');
@@ -165,7 +165,8 @@ export default function MathQuiz() {
           scalar: 1.2,
           ticks: 300
         });
-
+        
+        await updateActivity();
         toast.success(`Game Over! You earned ${reward} points.`);
       } catch (error: any) {
         console.error('Math quiz update error:', error);

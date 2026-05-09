@@ -20,6 +20,7 @@ export default function Register() {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [username, setUsername] = useState('');
+  const [phone, setPhone] = useState('');
   const [referralCode, setReferralCode] = useState('');
   const [referrerName, setReferrerName] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,7 +100,7 @@ export default function Register() {
     }
     setIsSubmitting(true);
     try {
-      await registerWithEmail(email, password, username, referralCode.toUpperCase());
+      await registerWithEmail(email, password, username, phone, referralCode.toUpperCase());
       toast.success('Account created successfully');
     } catch (error: any) {
       toast.error(error.message || 'Registration failed');
@@ -130,6 +131,23 @@ export default function Register() {
                   value={username} 
                   onChange={(e) => setUsername(e.target.value)} 
                   placeholder="johndoe" 
+                  required 
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phone" className="text-slate-700 font-medium">Phone Number</Label>
+              <div className="relative group">
+                <div className="absolute left-3 top-3 h-4 w-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors flex items-center justify-center">
+                   <span className="text-[10px] font-bold">📲</span>
+                </div>
+                <Input 
+                  id="phone" 
+                  type="tel"
+                  className="pl-10 h-11 bg-slate-50 border-slate-200 focus:bg-white transition-all"
+                  value={phone} 
+                  onChange={(e) => setPhone(e.target.value)} 
+                  placeholder="01712345678" 
                   required 
                 />
               </div>

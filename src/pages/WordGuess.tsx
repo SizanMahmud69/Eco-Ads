@@ -20,7 +20,7 @@ const WORDS = [
 ];
 
 export default function WordGuess() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const [word, setWord] = useState('');
   const [scrambled, setScrambled] = useState('');
@@ -93,6 +93,7 @@ export default function WordGuess() {
         });
 
         toast.success(`Correct! You earned ${reward} points.`);
+        await updateActivity();
         setTimeout(nextWord, 2000);
       } catch (error) {
         console.error("Error saving word reward:", error);

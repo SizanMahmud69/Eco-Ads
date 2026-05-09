@@ -7,7 +7,8 @@ import {
   User, Mail, Calendar, Wallet, LogOut, Shield, Zap, 
   Copy, CheckCircle2, Award, TrendingUp, Users, Gift,
   Star, Clock, ChevronRight, Sparkles, ArrowUpRight, QrCode,
-  Calculator, Brain, ShieldCheck, Palette, Eye, Heart, Activity
+  Calculator, Brain, ShieldCheck, Palette, Eye, Heart, Activity,
+  Phone
 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
@@ -15,7 +16,8 @@ import { toast } from 'sonner';
 import { AdUnit } from '@/components/AdUnit';
 import { useGameSettings } from '@/hooks/useGameSettings';
 import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
-import { collection, query, where, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { Input } from '@/components/ui/input';
 
 export default function Profile() {
   const { user, logout } = useAuth();
@@ -82,6 +84,38 @@ export default function Profile() {
   }, [user?.uid]);
 
   const [referralCount, setReferralCount] = React.useState(user?.referrals_count || 0);
+  const [showPhoneModal, setShowPhoneModal] = React.useState(false);
+  const [newPhone, setNewPhone] = React.useState('');
+  const [updatingPhone, setUpdatingPhone] = React.useState(false);
+
+  React.useEffect(() => {
+    if (user && !user.phone) {
+      const timer = setTimeout(() => {
+        setShowPhoneModal(true);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [user?.phone]);
+
+  const handleUpdatePhone = async () => {
+    if (!newPhone || newPhone.length < 11) {
+      toast.error('Please enter a valid phone number');
+      return;
+    }
+    
+    setUpdatingPhone(true);
+    try {
+      const userRef = doc(db, 'users', user!.uid);
+      await updateDoc(userRef, { phone: newPhone });
+      toast.success('Phone number updated successfully!');
+      setShowPhoneModal(false);
+    } catch (error) {
+      console.error("Error updating phone:", error);
+      toast.error('Failed to update phone number');
+    } finally {
+      setUpdatingPhone(false);
+    }
+  };
 
   React.useEffect(() => {
     if (!user?.referral_code) return;
@@ -425,6 +459,14 @@ export default function Profile() {
         </h3>
         <div className="bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem] overflow-hidden shadow-sm">
           <SettingsItem 
+            icon={<Phone size={18} className="text-emerald-500" />} 
+            label="Phone Number" 
+            value={user?.phone || 'Not Set'} 
+            badge={!user?.phone}
+            description={!user?.phone ? "Tap to set phone number" : "Your registered number"}
+            onClick={() => !user?.phone && setShowPhoneModal(true)}
+          />
+          <SettingsItem 
             icon={<Shield size={18} className="text-blue-500" />} 
             label="Membership Status" 
             value={user?.is_premium ? 'Premium' : 'Standard'} 
@@ -502,6 +544,80 @@ export default function Profile() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Phone Setup Modal */}
+      <AnimatePresence>
+        {showPhoneModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
+              onClick={() => user?.phone && setShowPhoneModal(false)}
+            />
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative z-10 border border-emerald-100 dark:border-emerald-900/30"
+            >
+              <div className="flex flex-col items-center text-center space-y-5">
+                <div className="w-20 h-20 bg-emerald-50 dark:bg-emerald-900/20 rounded-3xl flex items-center justify-center text-emerald-500 relative">
+                  <Phone size={40} />
+                  <motion.div 
+                    animate={{ scale: [1, 1.2, 1], opacity: [0.5, 1, 0.5] }}
+                    transition={{ repeat: Infinity, duration: 2 }}
+                    className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white dark:border-slate-900" 
+                  />
+                </div>
+                
+                <div className="space-y-2">
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white">Verify Phone</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm font-medium leading-relaxed">
+                    Please set your phone number to continue using all features. This is required for withdrawals and security.
+                  </p>
+                </div>
+
+                <div className="w-full space-y-4 pt-2">
+                  <div className="relative group">
+                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-emerald-500 transition-colors" />
+                    <Input 
+                      placeholder="017XXXXXXXX"
+                      value={newPhone}
+                      onChange={(e) => setNewPhone(e.target.value)}
+                      className="h-14 pl-11 rounded-2xl bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-lg font-bold"
+                      type="tel"
+                    />
+                  </div>
+                  
+                  <Button 
+                    onClick={handleUpdatePhone}
+                    disabled={updatingPhone || newPhone.length < 11}
+                    className="w-full h-14 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-2xl shadow-xl shadow-emerald-600/20 active:scale-[0.98] transition-all"
+                  >
+                    {updatingPhone ? 'Updating...' : 'Save Phone Number'}
+                  </Button>
+                  
+                  {user?.phone && (
+                    <Button 
+                      variant="ghost"
+                      onClick={() => setShowPhoneModal(false)}
+                      className="w-full h-12 text-slate-400 font-bold"
+                    >
+                      Maybe Later
+                    </Button>
+                  )}
+                </div>
+                
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-2">
+                  Locked for Security
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -536,8 +652,11 @@ const StatCard = ({ title, value, unit, icon, color, action }: any) => {
   );
 };
 
-const SettingsItem = ({ icon, label, value, badge, description }: any) => (
-  <div className="flex items-center justify-between p-5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group">
+const SettingsItem = ({ icon, label, value, badge, description, onClick }: any) => (
+  <div 
+    onClick={onClick}
+    className="flex items-center justify-between p-5 border-b border-slate-50 dark:border-slate-800/50 last:border-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
+  >
     <div className="flex items-center gap-4">
       <div className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-2xl group-hover:scale-110 transition-transform">
         {icon}

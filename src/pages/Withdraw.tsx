@@ -17,7 +17,7 @@ import { db, handleFirestoreError, OperationType } from '@/lib/firebase';
 import { collection, addDoc, query, where, orderBy, onSnapshot, serverTimestamp, increment, limit } from 'firebase/firestore';
 
 export default function Withdraw() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -134,6 +134,7 @@ export default function Withdraw() {
       });
 
       toast.success('Withdrawal request submitted!');
+      await updateActivity();
       setAmountPoints('');
       setAccountNumber('');
       setTimeLeft(24 * 60 * 60 * 1000);

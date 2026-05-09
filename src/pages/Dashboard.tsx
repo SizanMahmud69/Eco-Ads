@@ -24,9 +24,16 @@ import { format, subDays, startOfDay, isSameDay } from 'date-fns';
 import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function Dashboard() {
-  const { user, showReferralPopup, setShowReferralPopup } = useAuth();
+  const { user, showReferralPopup, setShowReferralPopup, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user) {
+      updateActivity().catch(console.warn);
+    }
+  }, []);
+
   const [stats, setStats] = useState({
     totalEarnings: 0,
     totalWithdrawals: 0,

@@ -61,7 +61,7 @@ const TaskCard = ({ task, activeTask, completing, startTask, handleCompleteTask 
 };
 
 export default function Tasks() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const [tasks, setTasks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,6 +134,7 @@ export default function Tasks() {
       });
 
       toast.success(`Task completed! You earned ${task.points_reward} points.`);
+      await updateActivity();
       setActiveTask(null);
     } catch (error) {
       console.error("Error completing task:", error);

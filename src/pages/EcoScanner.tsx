@@ -15,7 +15,7 @@ import { useCameraPermission } from '@/hooks/usePermission';
 import confetti from 'canvas-confetti';
 
 export default function EcoScanner() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const [scanning, setScanning] = useState(false);
   const [reward, setReward] = useState<number | null>(null);
@@ -205,6 +205,7 @@ export default function EcoScanner() {
       ]);
 
       setReward(points);
+      await updateActivity();
       
       // User requested animation: "paper cards red blue yellow green paper like top from bottom falling"
       confetti({

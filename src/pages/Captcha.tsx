@@ -14,7 +14,7 @@ import { AdUnit } from '@/components/AdUnit';
 import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function Captcha() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const [captcha, setCaptcha] = useState('');
   const [userInput, setUserInput] = useState('');
@@ -80,6 +80,7 @@ export default function Captcha() {
           ticks: 300
         });
         toast.success(`Correct! +${reward} points`);
+        await updateActivity();
         generateCaptcha();
       } catch (error) {
         console.error("Error saving captcha reward:", error);

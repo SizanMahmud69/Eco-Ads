@@ -47,7 +47,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 export default function AdminUserDetails() {
   const { userId } = useParams();
   const navigate = useNavigate();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isAdmin: isAdminAuth } = useAuth();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -56,23 +56,17 @@ export default function AdminUserDetails() {
   const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
-    const checkAdmin = async () => {
-      if (!currentUser) return;
-      try {
-        const adminDoc = await getDoc(doc(db, 'admins', currentUser.uid));
-        if (adminDoc.exists()) {
-          setIsAdmin(true);
-        } else {
-          toast.error("Unauthorized access");
-          navigate('/');
-        }
-      } catch (err) {
-        console.error("Error checking admin:", err);
+    if (currentUser) {
+      if (isAdminAuth) {
+        setIsAdmin(true);
+      } else {
+        toast.error("Unauthorized access");
         navigate('/');
       }
-    };
-    checkAdmin();
-  }, [currentUser, navigate]);
+    } else if (!loading) {
+       navigate('/admin/login');
+    }
+  }, [currentUser, isAdminAuth, navigate, loading]);
 
   useEffect(() => {
     if (!isAdmin || !userId) return;
@@ -88,6 +82,11 @@ export default function AdminUserDetails() {
         }
 
         const userData: any = { id: userDoc.id, ...userDoc.data() };
+        // Ensure we are not showing admin's own data if we requested someone else
+        if (userData.id === currentUser?.uid && userId !== currentUser?.uid) {
+           console.warn("Fetched data matches current user, but requested direct ID. This might be a cache issue or incorrect document reference.");
+        }
+        
         const effectiveUid = userData.uid || userDoc.id;
         
         try {
@@ -440,7 +439,11 @@ export default function AdminUserDetails() {
                             <DetailRow icon={<Mail />} label="Registered Email" value={user.private?.email || user.email || 'None'} />
                             <DetailRow icon={<Smartphone />} label="Phone Identity" value={user.private?.phone || user.phone || 'Not Assigned'} />
                             <DetailRow icon={<Calendar />} label="Joining Date" value={user.created_at ? new Date(user.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : 'Alpha Tester'} />
-                            <DetailRow icon={<Clock />} label="System activity" value={user.last_activity ? new Date(user.last_activity).toLocaleTimeString() : 'Active Now'} />
+                            <DetailRow 
+                              icon={<Clock />} 
+                              label="Last Activity" 
+                              value={user.last_active_at ? (user.last_active_at.toDate ? user.last_active_at.toDate().toLocaleString() : new Date(user.last_active_at).toLocaleString()) : 'Never Active'} 
+                            />
                             <DetailRow icon={<Target />} label="Referral Code" value={user.referral_code?.toUpperCase() || 'ROOT'} isCopyable />
                             <DetailRow icon={<TrendingUp />} label="Earning Multiplier" value={user.multiplier ? `${user.multiplier}x BOOST` : '1x BASE'} isHighlighted />
                          </div>

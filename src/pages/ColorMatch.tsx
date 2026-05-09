@@ -22,7 +22,7 @@ const COLORS = [
 ];
 
 export default function ColorMatch() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const [target, setTarget] = useState({ text: '', color: '' });
   const [options, setOptions] = useState<string[]>([]);
@@ -107,6 +107,7 @@ export default function ColorMatch() {
         });
 
         toast.success(`Game Over! You earned ${totalReward} points.`);
+        await updateActivity();
       } catch (error) {
         console.error("Error saving reward:", error);
         toast.error('Failed to save reward');

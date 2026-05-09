@@ -13,7 +13,7 @@ import { useGameSettings } from '@/hooks/useGameSettings';
 import confetti from 'canvas-confetti';
 
 export default function WatchAds() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
@@ -245,6 +245,7 @@ export default function WatchAds() {
       });
 
       toast.success(`Way to go! You earned ${reward} points.`);
+      await updateActivity();
       setAdStarted(false);
       setVideoEnded(false);
       setCurrentVideo(null);

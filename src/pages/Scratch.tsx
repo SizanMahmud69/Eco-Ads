@@ -14,7 +14,7 @@ import { History as HistoryIcon } from 'lucide-react';
 import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function Scratch() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -138,6 +138,7 @@ export default function Scratch() {
         scalar: 1.2,
         ticks: 300
       });
+      await updateActivity();
       toast.success(`You won ${points} points!`);
     } catch (error: any) {
       console.error('Scratch update error:', error);

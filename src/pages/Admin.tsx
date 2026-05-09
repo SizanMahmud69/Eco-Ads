@@ -1048,6 +1048,7 @@ export default function Admin() {
                           <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Balance</TableHead>
                           <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Referral Code</TableHead>
                           <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Status</TableHead>
+                          <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Last Activity</TableHead>
                           <TableHead className="text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Joined</TableHead>
                           <TableHead className="text-right text-slate-500 uppercase text-[10px] font-black tracking-widest p-6">Actions</TableHead>
                         </TableRow>
@@ -1095,6 +1096,15 @@ export default function Admin() {
                               }`}>
                                 {u.is_banned ? 'Banned' : u.is_frozen ? 'Frozen' : u.is_premium ? 'Premium' : 'Free'}
                               </Badge>
+                            </TableCell>
+                            <TableCell className="p-6">
+                              <div className="flex flex-col">
+                                <span className="text-xs font-bold text-slate-300">
+                                  {u.last_active_at ? (
+                                    u.last_active_at.toDate ? u.last_active_at.toDate().toLocaleString() : new Date(u.last_active_at).toLocaleString()
+                                  ) : 'Never'}
+                                </span>
+                              </div>
                             </TableCell>
                             <TableCell className="p-6 text-xs font-bold text-slate-500 uppercase tracking-tighter">
                               {(() => {

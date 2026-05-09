@@ -13,7 +13,7 @@ import { History as HistoryIcon, Sparkles } from 'lucide-react';
 import { useGameSettings } from '@/hooks/useGameSettings';
 
 export default function Spin() {
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateActivity } = useAuth();
   const { settings } = useGameSettings();
   const [loading, setLoading] = useState(false);
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -145,6 +145,8 @@ export default function Spin() {
         last_spin_at: serverTimestamp(),
         'daily_plays.spin': increment(1)
       });
+      
+      await updateActivity();
       toast.success(`You won ${points} points!`);
     } catch (error: any) {
       console.error('Spin update error:', error);
